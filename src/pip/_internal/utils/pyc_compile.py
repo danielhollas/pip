@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import compileall
-import importlib
+import importlib.util
 import os
 import sys
 import warnings
@@ -40,7 +40,7 @@ def _compile_single(py_path: str | Path) -> CompileResult:
     with warnings.catch_warnings(), redirect_stdout(StringIO()) as stdout:
         warnings.filterwarnings("ignore")
         success = compileall.compile_file(py_path, force=True, quiet=True)
-    pyc_path = importlib.util.cache_from_source(py_path)  # type: ignore[attr-defined]
+    pyc_path = importlib.util.cache_from_source(py_path)
     return CompileResult(str(py_path), pyc_path, success, stdout.getvalue())
 
 
@@ -78,7 +78,6 @@ class ParallelCompiler(BytecodeCompiler):
         self.workers = workers
 
     def __call__(self, paths: Iterable[str | Path]) -> Iterable[CompileResult]:
-        # New workers can be started at any time, so patch until fully done.
         yield from self.pool.map(_compile_single, paths)
 
     def __exit__(self, *args: object) -> None:
