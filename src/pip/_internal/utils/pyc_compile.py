@@ -122,12 +122,12 @@ def create_bytecode_compiler(
 
     # Case 1: Parallelization is disabled or pointless (there's only one CPU).
     if max_workers == 1 or cpus == 1 or cpus is None:
-        logger.debug("Bytecode will be compiled serially")
+        logger.info("Bytecode will be compiled serially")
         return SerialCompiler()
 
     # Case 2: There isn't enough code for parallelization to be worth it.
     if code_size_check is not None and not code_size_check(CODE_SIZE_THRESHOLD):
-        logger.debug("Bytecode will be compiled serially (not enough .py code)")
+        logger.info("Bytecode will be compiled serially (not enough .py code)")
         return SerialCompiler()
 
     # Case 3: Attempt to initialize a parallelized compiler.
@@ -138,9 +138,9 @@ def create_bytecode_compiler(
     workers = min(cpus, WORKER_LIMIT) if max_workers == "auto" else max_workers
     try:
         compiler = ParallelCompiler(workers)
-        logger.debug("Bytecode will be compiled using at most %s workers", workers)
+        logger.info("Bytecode will be compiled using at most %s workers", workers)
         return compiler
     except (ImportError, NotImplementedError, OSError) as e:
         # Case 4: multiprocessing is broken, fall back to serial compilation.
-        logger.debug("Err! Falling back to serial bytecode compilation", exc_info=e)
+        logger.info("Err! Falling back to serial bytecode compilation", exc_info=e)
         return SerialCompiler()
