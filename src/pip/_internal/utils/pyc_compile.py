@@ -10,8 +10,8 @@ import importlib
 import os
 import sys
 import warnings
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager, redirect_stdout
+from collections.abc import Callable, Iterable
+from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple, Protocol, Union
@@ -23,27 +23,6 @@ WorkerSetting = Union[int, Literal["auto"]]
 
 CODE_SIZE_THRESHOLD = 1000 * 1000  # 1 MB of .py code
 WORKER_LIMIT = 8
-
-
-@contextmanager
-def _patch_main_module_hack() -> Iterator[None]:
-    """Temporarily replace __main__ to reduce the worker startup overhead.
-
-    concurrent.futures imports the main module while initializing new workers
-    so any global state is retained in the workers. Unfortunately, when pip
-    is run from a console script wrapper, the wrapper unconditionally imports
-    pip._internal.cli.main and everything else it requires. This is *slow*.
-
-    The compilation code does not depend on any global state, thus the costly
-    re-import of pip can be avoided by replacing __main__ with any random
-    module that does nothing.
-    """
-    original_main = sys.modules["__main__"]
-    sys.modules["__main__"] = sys.modules["pip"]
-    try:
-        yield
-    finally:
-        sys.modules["__main__"] = original_main
 
 
 class CompileResult(NamedTuple):
@@ -100,8 +79,7 @@ class ParallelCompiler(BytecodeCompiler):
 
     def __call__(self, paths: Iterable[str | Path]) -> Iterable[CompileResult]:
         # New workers can be started at any time, so patch until fully done.
-        with _patch_main_module_hack():
-            yield from self.pool.map(_compile_single, paths)
+        yield from self.pool.map(_compile_single, paths)
 
     def __exit__(self, *args: object) -> None:
         # It's pointless to block on pool finalization, let it occur in background.
