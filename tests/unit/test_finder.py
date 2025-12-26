@@ -1,11 +1,12 @@
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 from unittest.mock import Mock, patch
 
 import pytest
 
 from pip._vendor.packaging.specifiers import SpecifierSet
 from pip._vendor.packaging.tags import Tag
+from pip._vendor.packaging.utils import canonicalize_name
 from pip._vendor.packaging.version import parse as parse_version
 
 import pip._internal.utils.compatibility_tags
@@ -81,7 +82,6 @@ def test_incorrect_case_file_index(data: TestData) -> None:
     assert found.link.url.endswith("Dinner-2.0.tar.gz")
 
 
-@pytest.mark.network
 def test_finder_detects_latest_already_satisfied_find_links(data: TestData) -> None:
     """Test PackageFinder detects latest already satisfied using find-links"""
     req = install_req_from_line("simple")
@@ -98,7 +98,6 @@ def test_finder_detects_latest_already_satisfied_find_links(data: TestData) -> N
         finder.find_requirement(req, True)
 
 
-@pytest.mark.network
 def test_finder_detects_latest_already_satisfied_pypi_links() -> None:
     """Test PackageFinder detects latest already satisfied using pypi links"""
     req = install_req_from_line("initools")
@@ -319,7 +318,10 @@ def test_finder_priority_file_over_page(data: TestData) -> None:
         find_links=[data.find_links],
         index_urls=["http://pypi.org/simple/"],
     )
-    all_versions = finder.find_all_candidates(req.name)
+    name = req.name
+    assert name == "gmpy"
+
+    all_versions = finder.find_all_candidates(name)
     # 1 file InstallationCandidate followed by all https ones
     assert all_versions[0].link.scheme == "file"
     assert all(
@@ -335,9 +337,11 @@ def test_finder_priority_nonegg_over_eggfragments() -> None:
     """Test PackageFinder prefers non-egg links over "#egg=" links"""
     req = install_req_from_line("bar==1.0")
     links = ["http://foo/bar.py#egg=bar-1.0", "http://foo/bar-1.0.tar.gz"]
+    name = req.name
+    assert name == "bar"
 
     finder = make_test_finder(links)
-    all_versions = finder.find_all_candidates(req.name)
+    all_versions = finder.find_all_candidates(name)
     assert all_versions[0].link.url.endswith("tar.gz")
     assert all_versions[1].link.url.endswith("#egg=bar-1.0")
 
@@ -349,7 +353,7 @@ def test_finder_priority_nonegg_over_eggfragments() -> None:
     links.reverse()
 
     finder = make_test_finder(links)
-    all_versions = finder.find_all_candidates(req.name)
+    all_versions = finder.find_all_candidates(name)
     assert all_versions[0].link.url.endswith("tar.gz")
     assert all_versions[1].link.url.endswith("#egg=bar-1.0")
     found = finder.find_requirement(req, False)
@@ -478,7 +482,7 @@ class TestLinkEvaluator:
         target_python = TargetPython()
         return LinkEvaluator(
             project_name="pytest",
-            canonical_name="pytest",
+            canonical_name=canonicalize_name("pytest"),
             formats=frozenset(formats),
             target_python=target_python,
             allow_yanked=True,

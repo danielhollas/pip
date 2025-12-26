@@ -1,14 +1,18 @@
 [project]
 dynamic = ["version"]
-
 name = "pip"
 description = "The PyPA recommended tool for installing Python packages."
 readme = "README.rst"
-license = {text = "MIT"}
+license = "MIT"
+license-files = [
+  "AUTHORS.txt",
+  "LICENSE.txt",
+  "src/pip/_vendor/**/*COPYING*",
+  "src/pip/_vendor/**/*LICENSE*",
+]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Topic :: Software Development :: Build Tools",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
@@ -18,6 +22,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
@@ -40,32 +45,75 @@ Source = "https://github.com/pypa/pip"
 Changelog = "https://pip.pypa.io/en/stable/news/"
 
 [build-system]
-# The lower bound is for <https://github.com/pypa/setuptools/issues/3865>.
-requires = ["setuptools>=67.6.1"]
-build-backend = "setuptools.build_meta"
+requires = ["flit-core >=3.11,<4"]
+build-backend = "flit_core.buildapi"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-include-package-data = false
+[dependency-groups]
+test = [
+    "cryptography",
+    "flit-core >= 3.11, < 4",
+    "freezegun",
+    "installer",
+    # pytest-subket requires 7.0+
+    "pytest >= 7.0",
+    "pytest-cov",
+    "pytest-rerunfailures",
+    "pytest-xdist",
+    "pytest-subket",
+    "scripttest",
+    "setuptools",
+    # macOS (darwin) arm64 always uses virtualenv >= 20.0
+    # for other platforms, it depends on python version
+    "virtualenv < 20.0 ; python_version < '3.10' and (sys_platform != 'darwin' or platform_machine != 'arm64')",
+    "virtualenv >= 20.0 ; python_version >= '3.10' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+    "werkzeug",
+    "wheel",
+    "tomli-w",
+    "proxy.py",
+]
 
-[tool.setuptools.dynamic]
-version = {attr = "pip.__version__"}
+test-common-wheels = [
+    "flit-core >= 3.11, < 4",
+    # We pin setuptools<80 because our test suite currently
+    # depends on setup.py develop to generate egg-link files.
+    "setuptools >= 40.8.0, != 60.6.0, <80",
+    "wheel",
+    # As required by pytest-cov.
+    "coverage >= 4.4",
+    "pytest-subket >= 0.8.1",
+    "keyring",
+]
 
-[tool.setuptools.packages.find]
-where = ["src"]
-exclude = ["contrib", "docs", "tests*", "tasks"]
+docs = [
+    "sphinx ~= 7.0",
+    # currently incompatible with sphinxcontrib-towncrier
+    # https://github.com/sphinx-contrib/sphinxcontrib-towncrier/issues/92
+    "towncrier < 24",
+    "furo",
+    "myst_parser",
+    "sphinx-copybutton",
+    "sphinx-inline-tabs",
+    "sphinxcontrib-towncrier >= 0.2.0a0",
+    "sphinx-issues",
+]
 
-[tool.setuptools.package-data]
-"pip" = ["py.typed"]
-"pip._vendor" = ["vendor.txt"]
-"pip._vendor.certifi" = ["*.pem"]
-"pip._vendor.distlib" = [
-    "t32.exe",
-    "t64.exe",
-    "t64-arm.exe",
-    "w32.exe",
-    "w64.exe",
-    "w64-arm.exe",
+[tool.flit.sdist]
+include = [
+    "NEWS.rst",
+    "SECURITY.md",
+    "build-project/.python-version",
+    "build-project/build-project.py",
+    "build-project/build-requirements.in",
+    "build-project/build-requirements.txt",
+    "docs/**/*.css",
+    "docs/**/*.dot",
+    "docs/**/*.md",
+    "docs/**/*.png",
+    "docs/**/*.py",
+    "docs/**/*.rst",
+]
+exclude = [
+    "src/pip/_vendor/**/*.pyi",
 ]
 
 ######################################################################################
@@ -130,11 +178,15 @@ drop = [
   "_distutils_hack",
   "distutils-precedence.pth",
   "pkg_resources/extern/",
-  # trim vendored pygments styles and lexers
+  # trim vendored pygments styles, lexers, formatters, and CLI
   "pygments/styles/[!_]*.py",
   '^pygments/lexers/(?!python|__init__|_mapping).*\.py$',
+  '^pygments/formatters/(?!__init__|_mapping).*\.py$',
+  '^pygments/cmdline\.py$',
   # trim rich's markdown support
   "rich/markdown.py",
+  # trim parts of distlib that aren't related to scripts
+  '^distlib/(?!__init__|compat|resources|scripts|util).*\.py$',
 ]
 
 [tool.vendoring.typing-stubs]
@@ -152,7 +204,7 @@ distlib = "https://bitbucket.org/pypa/distlib/raw/master/LICENSE.txt"
 
 [tool.ruff]
 # Pinned to delay pyupgrade changes (https://github.com/pypa/pip/issues/13236)
-target-version = "py38"  # Pin Ruff to Python 3.8
+target-version = "py39"  # Pin Ruff to Python 3.9
 src = ["src"]
 line-length = 88
 extend-exclude = [
@@ -164,10 +216,10 @@ extend-exclude = [
 
 [tool.ruff.lint]
 ignore = [
-    "B019",
     "B020",
     "B904", # Ruff enables opinionated warnings by default
     "B905", # Ruff enables opinionated warnings by default
+    "C420", # unnecessary-dict-comprehension-for-iterable (worsens readability)
 ]
 select = [
     "ASYNC",
@@ -176,16 +228,16 @@ select = [
     "C90",
     "E",
     "F",
+    "FA",
     "G",
     "I",
     "ISC",
-    "PERF",
+    "PIE810",
     "PLE",
     "PLR0",
-    "W",
     "RUF100",
     "UP",
-    "FA102",  # future-required-type-annotation
+    "W",
 ]
 
 [tool.ruff.lint.isort]
@@ -218,6 +270,11 @@ max-args = 15  # default is 5
 max-branches = 28  # default is 12
 max-returns = 13  # default is 6
 max-statements = 134  # default is 50
+
+[tool.ruff.per-file-target-version]
+# `__pip-runner__.py` should be Python 2.7 compatible but the
+# earliest version of Python ruff will check is 3.7
+"src/pip/__pip-runner__.py" = "py37"
 
 ######################################################################################
 # mypy
@@ -257,7 +314,15 @@ follow_imports = "skip"
 #
 
 [tool.pytest.ini_options]
-addopts = "--ignore src/pip/_vendor --ignore tests/tests_cache -r aR --color=yes"
+addopts = [
+    "-r=aR",
+    "--color=yes",
+    "--ignore=src/pip/_vendor",
+    "--ignore=tests/tests_cache",
+    "--disable-socket",
+    "--allow-unix-socket",
+    "--allow-hosts=localhost",
+]
 xfail_strict = true
 markers = [
     "network: tests that need network",
@@ -310,4 +375,16 @@ source0 = [
 exclude_also = [
     # This excludes typing-specific code, which will be validated by mypy anyway.
     "if TYPE_CHECKING",
+]
+
+[tool.check-sdist]
+git-only = [
+  "tests/**",
+  "tools/**",
+  "news/.gitignore",
+  ".gitattributes",
+  ".gitignore",
+  ".git-blame-ignore-revs",
+  ".mailmap",
+  ".readthedocs-custom-redirects.yml"
 ]

@@ -35,6 +35,7 @@ def test_extras_after_wheel(script: PipTestEnvironment, data: TestData) -> None:
 
     no_extra = script.pip(
         "install",
+        "--no-build-isolation",
         "--no-index",
         "-f",
         data.find_links,
@@ -45,6 +46,7 @@ def test_extras_after_wheel(script: PipTestEnvironment, data: TestData) -> None:
 
     extra = script.pip(
         "install",
+        "--no-build-isolation",
         "--no-index",
         "-f",
         data.find_links,
@@ -84,6 +86,7 @@ def test_nonexistent_extra_warns_user_no_wheel(
     result = script.pip(
         "install",
         "--no-binary=:all:",
+        "--no-build-isolation",
         "--no-index",
         "--find-links=" + data.find_links,
         "simple[nonexistent]",
@@ -188,10 +191,11 @@ def test_install_special_extra(
     ) in result.stderr, str(result)
 
 
+@pytest.mark.network
 def test_install_requirements_no_r_flag(script: PipTestEnvironment) -> None:
     """Beginners sometimes forget the -r and this leads to confusion"""
     result = script.pip("install", "requirements.txt", expect_error=True)
-    assert 'literally named "requirements.txt"' in result.stdout
+    assert 'literally named "requirements.txt"' in result.stdout, str(result)
 
 
 @pytest.mark.parametrize(
@@ -272,4 +276,4 @@ def test_install_setuptools_extras_inconsistency(
             """
         )
     )
-    script.pip("install", "--dry-run", test_project_path)
+    script.pip("install", "--no-build-isolation", "--dry-run", test_project_path)

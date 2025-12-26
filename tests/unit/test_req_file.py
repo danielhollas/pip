@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 import codecs
 import collections
 import logging
 import os
 import re
 import textwrap
+from collections.abc import Iterator
 from optparse import Values
 from pathlib import Path
-from typing import Any, Iterator, List, Optional, Protocol, Tuple, Union
+from typing import Any, Protocol
 from unittest import mock
 
 import pytest
@@ -30,7 +33,7 @@ from pip._internal.req.req_file import (
 )
 from pip._internal.req.req_install import InstallRequirement
 
-from tests.lib import TestData, make_test_finder, requirements_file
+from tests.lib import TestData, make_test_finder
 
 
 @pytest.fixture
@@ -54,10 +57,10 @@ def options(session: PipSession) -> mock.Mock:
 
 
 def parse_reqfile(
-    filename: Union[Path, str],
+    filename: Path | str,
     session: PipSession,
-    finder: Optional[PackageFinder] = None,
-    options: Optional[Values] = None,
+    finder: PackageFinder | None = None,
+    options: Values | None = None,
     constraint: bool = False,
     isolated: bool = False,
 ) -> Iterator[InstallRequirement]:
@@ -197,11 +200,11 @@ class LineProcessor(Protocol):
         line: str,
         filename: str,
         line_number: int,
-        finder: Optional[PackageFinder] = None,
-        options: Optional[Values] = None,
-        session: Optional[PipSession] = None,
+        finder: PackageFinder | None = None,
+        options: Values | None = None,
+        session: PipSession | None = None,
         constraint: bool = False,
-    ) -> List[InstallRequirement]: ...
+    ) -> list[InstallRequirement]: ...
 
 
 @pytest.fixture
@@ -210,11 +213,11 @@ def line_processor(monkeypatch: pytest.MonkeyPatch, tmpdir: Path) -> LineProcess
         line: str,
         filename: str,
         line_number: int,
-        finder: Optional[PackageFinder] = None,
-        options: Optional[Values] = None,
-        session: Optional[PipSession] = None,
+        finder: PackageFinder | None = None,
+        options: Values | None = None,
+        session: PipSession | None = None,
         constraint: bool = False,
-    ) -> List[InstallRequirement]:
+    ) -> list[InstallRequirement]:
         if session is None:
             session = PipSession()
 
@@ -419,13 +422,9 @@ class TestProcessLine:
             list(parse_requirements(filename=str(root_req_file), session=session))
 
     def test_options_on_a_requirement_line(self, line_processor: LineProcessor) -> None:
-        line = (
-            'SomeProject --global-option="yo3" --global-option "yo4" '
-            '--config-settings="yo3=yo4" --config-settings "yo1=yo2"'
-        )
+        line = 'SomeProject --config-settings="yo3=yo4" --config-settings "yo1=yo2"'
         filename = "filename"
         req = line_processor(line, filename, 1)[0]
-        assert req.global_options == ["yo3", "yo4"]
         assert req.config_settings == {"yo3": "yo4", "yo1": "yo2"}
 
     def test_hash_options(self, line_processor: LineProcessor) -> None:
@@ -587,7 +586,7 @@ class TestProcessLine:
 
         def get_file_content(
             filename: str, *args: Any, **kwargs: Any
-        ) -> Tuple[None, str]:
+        ) -> tuple[None, str]:
             if filename == req_file:
                 return None, "-r reqs.txt"
             elif filename == "http://me.com/me/reqs.txt":
@@ -656,7 +655,7 @@ class TestProcessLine:
 
         def get_file_content(
             filename: str, *args: Any, **kwargs: Any
-        ) -> Tuple[None, str]:
+        ) -> tuple[None, str]:
             if filename == str(req_file):
                 return None, f"-r {nested_req_file}"
             elif filename == nested_req_file:
@@ -933,29 +932,6 @@ class TestParseRequirements:
             )
 
         parse_reqfile(tmpdir.joinpath("req.txt"), session=PipSession())
-
-    def test_install_requirements_with_options(
-        self,
-        tmpdir: Path,
-        finder: PackageFinder,
-        session: PipSession,
-        options: mock.Mock,
-    ) -> None:
-        global_option = "--dry-run"
-
-        content = f"""
-        --only-binary :all:
-        INITools==2.0 --global-option="{global_option}"
-        """
-
-        with requirements_file(content, tmpdir) as reqs_file:
-            req = next(
-                parse_reqfile(
-                    reqs_file.resolve(), finder=finder, options=options, session=session
-                )
-            )
-
-        assert req.global_options == [global_option]
 
     @pytest.mark.parametrize(
         "raw_req_file,expected_name,expected_spec",

@@ -1,19 +1,21 @@
 """Tests for wheel binary packages and .dist-info."""
 
+from __future__ import annotations
+
 import csv
-import logging
 import os
 import pathlib
 import sys
 import textwrap
 from email import message_from_string
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, cast
+from typing import cast
 from unittest.mock import patch
 
 import pytest
 
 from pip._vendor.packaging.requirements import Requirement
+from pip._vendor.packaging.utils import canonicalize_name
 
 from pip._internal.exceptions import InstallationError
 from pip._internal.locations import get_scheme
@@ -23,7 +25,6 @@ from pip._internal.models.direct_url import (
     DirectUrl,
 )
 from pip._internal.models.scheme import Scheme
-from pip._internal.operations.build.wheel_legacy import get_legacy_build_wheel_path
 from pip._internal.operations.install import wheel
 from pip._internal.operations.install.wheel import (
     InstalledCSVRow,
@@ -34,66 +35,8 @@ from pip._internal.utils.compat import WINDOWS
 from pip._internal.utils.misc import hash_file
 from pip._internal.utils.unpacking import unpack_file
 
-from tests.lib import DATA_DIR, TestData, assert_paths_equal
+from tests.lib import DATA_DIR, TestData
 from tests.lib.wheel import make_wheel
-
-
-def call_get_legacy_build_wheel_path(
-    caplog: pytest.LogCaptureFixture, names: List[str]
-) -> Optional[str]:
-    wheel_path = get_legacy_build_wheel_path(
-        names=names,
-        temp_dir="/tmp/abcd",
-        name="pendulum",
-        command_args=["arg1", "arg2"],
-        command_output="output line 1\noutput line 2\n",
-    )
-    return wheel_path
-
-
-def test_get_legacy_build_wheel_path(caplog: pytest.LogCaptureFixture) -> None:
-    actual = call_get_legacy_build_wheel_path(caplog, names=["name"])
-    assert actual is not None
-    assert_paths_equal(actual, "/tmp/abcd/name")
-    assert not caplog.records
-
-
-def test_get_legacy_build_wheel_path__no_names(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    caplog.set_level(logging.INFO)
-    actual = call_get_legacy_build_wheel_path(caplog, names=[])
-    assert actual is None
-    assert len(caplog.records) == 1
-    record = caplog.records[0]
-    assert record.levelname == "WARNING"
-    assert record.message.splitlines() == [
-        "Legacy build of wheel for 'pendulum' created no files.",
-        "Command arguments: arg1 arg2",
-        "Command output: [use --verbose to show]",
-    ]
-
-
-def test_get_legacy_build_wheel_path__multiple_names(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    caplog.set_level(logging.INFO)
-    # Deliberately pass the names in non-sorted order.
-    actual = call_get_legacy_build_wheel_path(
-        caplog,
-        names=["name2", "name1"],
-    )
-    assert actual is not None
-    assert_paths_equal(actual, "/tmp/abcd/name1")
-    assert len(caplog.records) == 1
-    record = caplog.records[0]
-    assert record.levelname == "WARNING"
-    assert record.message.splitlines() == [
-        "Legacy build of wheel for 'pendulum' created more than one file.",
-        "Filenames (choosing first): ['name1', 'name2']",
-        "Command arguments: arg1 arg2",
-        "Command output: [use --verbose to show]",
-    ]
 
 
 @pytest.mark.parametrize(
@@ -172,19 +115,19 @@ def test_get_entrypoints_no_entrypoints(tmp_path: pathlib.Path) -> None:
     ],
 )
 def test_normalized_outrows(
-    outrows: List[Tuple[RecordPath, str, str]], expected: List[Tuple[str, str, str]]
+    outrows: list[tuple[RecordPath, str, str]], expected: list[tuple[str, str, str]]
 ) -> None:
     actual = wheel._normalized_outrows(outrows)
     assert actual == expected
 
 
-def call_get_csv_rows_for_installed(tmpdir: Path, text: str) -> List[InstalledCSVRow]:
+def call_get_csv_rows_for_installed(tmpdir: Path, text: str) -> list[InstalledCSVRow]:
     path = tmpdir.joinpath("temp.txt")
     path.write_text(text)
 
     # Test that an installed file appearing in RECORD has its filename
     # updated in the new RECORD file.
-    installed = cast(Dict[RecordPath, RecordPath], {"a": "z"})
+    installed = cast(dict[RecordPath, RecordPath], {"a": "z"})
     lib_dir = "/lib/dir"
 
     with open(path, **wheel.csv_io_kwargs("r")) as f:
@@ -264,7 +207,9 @@ def test_dist_from_broken_wheel_fails(data: TestData) -> None:
 
     package = data.packages.joinpath("corruptwheel-1.0-py2.py3-none-any.whl")
     with pytest.raises(InvalidWheel):
-        get_wheel_distribution(FilesystemWheel(os.fspath(package)), "brokenwheel")
+        get_wheel_distribution(
+            FilesystemWheel(os.fspath(package)), canonicalize_name("brokenwheel")
+        )
 
 
 class TestWheelFile:
@@ -524,7 +469,7 @@ class TestMessageAboutScriptsNotOnPATH:
         "which may not be expanded by all applications."
     )
 
-    def _template(self, paths: List[str], scripts: List[str]) -> Optional[str]:
+    def _template(self, paths: list[str], scripts: list[str]) -> str | None:
         with patch.dict("os.environ", {"PATH": os.pathsep.join(paths)}):
             return wheel.message_about_scripts_not_on_PATH(scripts)
 

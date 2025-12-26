@@ -12,9 +12,9 @@ from tests.lib import (
     TestData,
     _create_test_package,
     create_test_package_with_setup,
+    make_wheel,
     wheel,
 )
-from tests.lib.direct_url import get_created_direct_url_path
 
 
 @pytest.fixture(scope="session")
@@ -27,6 +27,7 @@ def simple_script(
     script = script_factory(tmpdir.joinpath("workspace"))
     script.pip(
         "install",
+        "--no-build-isolation",
         "-f",
         shared_data.find_links,
         "--no-index",
@@ -129,36 +130,32 @@ def test_multiple_exclude_and_normalization(
     assert "pip" not in result.stdout
 
 
-@pytest.mark.network
 @pytest.mark.usefixtures("enable_user_site")
 def test_user_flag(script: PipTestEnvironment, data: TestData) -> None:
     """
     Test the behavior of --user flag in the list command
 
     """
-    script.pip("download", "setuptools", "wheel", "-d", data.packages)
-    script.pip("install", "-f", data.find_links, "--no-index", "simple==1.0")
-    script.pip("install", "-f", data.find_links, "--no-index", "--user", "simple2==2.0")
+    script.pip_install_local("simplewheel==1.0")
+    script.pip_install_local("--user", "simple.dist==0.1")
     result = script.pip("list", "--user", "--format=json")
-    assert {"name": "simple", "version": "1.0"} not in json.loads(result.stdout)
-    assert {"name": "simple2", "version": "2.0"} in json.loads(result.stdout)
+    assert {"name": "simplewheel", "version": "1.0"} not in json.loads(result.stdout)
+    assert {"name": "simple.dist", "version": "0.1"} in json.loads(result.stdout)
 
 
-@pytest.mark.network
 @pytest.mark.usefixtures("enable_user_site")
 def test_user_columns_flag(script: PipTestEnvironment, data: TestData) -> None:
     """
     Test the behavior of --user --format=columns flags in the list command
 
     """
-    script.pip("download", "setuptools", "wheel", "-d", data.packages)
-    script.pip("install", "-f", data.find_links, "--no-index", "simple==1.0")
-    script.pip("install", "-f", data.find_links, "--no-index", "--user", "simple2==2.0")
+    script.pip_install_local("simplewheel==1.0")
+    script.pip_install_local("--user", "simple.dist==0.1")
     result = script.pip("list", "--user", "--format=columns")
     assert "Package" in result.stdout
     assert "Version" in result.stdout
-    assert "simple2 (2.0)" not in result.stdout
-    assert "simple2 2.0" in result.stdout, str(result)
+    assert "simple.dist (2.0)" not in result.stdout
+    assert "simple.dist 0.1" in result.stdout, str(result)
 
 
 @pytest.mark.network
@@ -169,6 +166,7 @@ def test_uptodate_flag(script: PipTestEnvironment, data: TestData) -> None:
     """
     script.pip(
         "install",
+        "--no-build-isolation",
         "-f",
         data.find_links,
         "--no-index",
@@ -209,6 +207,7 @@ def test_uptodate_columns_flag(script: PipTestEnvironment, data: TestData) -> No
     """
     script.pip(
         "install",
+        "--no-build-isolation",
         "-f",
         data.find_links,
         "--no-index",
@@ -244,6 +243,7 @@ def test_outdated_flag(script: PipTestEnvironment, data: TestData) -> None:
     """
     script.pip(
         "install",
+        "--no-build-isolation",
         "-f",
         data.find_links,
         "--no-index",
@@ -298,6 +298,7 @@ def test_outdated_columns_flag(script: PipTestEnvironment, data: TestData) -> No
     """
     script.pip(
         "install",
+        "--no-build-isolation",
         "-f",
         data.find_links,
         "--no-index",
@@ -337,9 +338,17 @@ def pip_test_package_script(
 ) -> PipTestEnvironment:
     tmpdir = tmpdir_factory.mktemp("pip_test_package")
     script = script_factory(tmpdir.joinpath("workspace"))
-    script.pip("install", "-f", shared_data.find_links, "--no-index", "simple==1.0")
     script.pip(
         "install",
+        "--no-build-isolation",
+        "-f",
+        shared_data.find_links,
+        "--no-index",
+        "simple==1.0",
+    )
+    script.pip(
+        "install",
+        "--no-build-isolation",
         "-e",
         "git+https://github.com/pypa/pip-test-package.git#egg=pip-test-package",
     )
@@ -426,9 +435,17 @@ def test_outdated_editables_flag(script: PipTestEnvironment, data: TestData) -> 
     """
     test the behavior of --editable --outdated flag in the list command
     """
-    script.pip("install", "-f", data.find_links, "--no-index", "simple==1.0")
+    script.pip(
+        "install",
+        "--no-build-isolation",
+        "-f",
+        data.find_links,
+        "--no-index",
+        "simple==1.0",
+    )
     result = script.pip(
         "install",
+        "--no-build-isolation",
         "-e",
         "git+https://github.com/pypa/pip-test-package.git@0.1#egg=pip-test-package",
     )
@@ -451,9 +468,17 @@ def test_outdated_editables_columns_flag(
     """
     test the behavior of --editable --outdated flag in the list command
     """
-    script.pip("install", "-f", data.find_links, "--no-index", "simple==1.0")
+    script.pip(
+        "install",
+        "--no-build-isolation",
+        "-f",
+        data.find_links,
+        "--no-index",
+        "simple==1.0",
+    )
     result = script.pip(
         "install",
+        "--no-build-isolation",
         "-e",
         "git+https://github.com/pypa/pip-test-package.git@0.1#egg=pip-test-package",
     )
@@ -478,6 +503,7 @@ def test_outdated_not_required_flag(script: PipTestEnvironment, data: TestData) 
     """
     script.pip(
         "install",
+        "--no-build-isolation",
         "-f",
         data.find_links,
         "--no-index",
@@ -497,7 +523,14 @@ def test_outdated_not_required_flag(script: PipTestEnvironment, data: TestData) 
 
 
 def test_outdated_pre(script: PipTestEnvironment, data: TestData) -> None:
-    script.pip("install", "-f", data.find_links, "--no-index", "simple==1.0")
+    script.pip(
+        "install",
+        "--no-build-isolation",
+        "-f",
+        data.find_links,
+        "--no-index",
+        "simple==1.0",
+    )
 
     # Let's build a fake wheelhouse
     script.scratch_path.joinpath("wheelhouse").mkdir()
@@ -545,7 +578,14 @@ def test_outdated_pre(script: PipTestEnvironment, data: TestData) -> None:
 
 def test_outdated_formats(script: PipTestEnvironment, data: TestData) -> None:
     """Test of different outdated formats"""
-    script.pip("install", "-f", data.find_links, "--no-index", "simple==1.0")
+    script.pip(
+        "install",
+        "--no-build-isolation",
+        "-f",
+        data.find_links,
+        "--no-index",
+        "simple==1.0",
+    )
 
     # Let's build a fake wheelhouse
     script.scratch_path.joinpath("wheelhouse").mkdir()
@@ -607,7 +647,14 @@ def test_outdated_formats(script: PipTestEnvironment, data: TestData) -> None:
 
 
 def test_not_required_flag(script: PipTestEnvironment, data: TestData) -> None:
-    script.pip("install", "-f", data.find_links, "--no-index", "TopoRequires4")
+    script.pip(
+        "install",
+        "--no-build-isolation",
+        "-f",
+        data.find_links,
+        "--no-index",
+        "TopoRequires4",
+    )
     result = script.pip("list", "--not-required", expect_stderr=True)
     assert "TopoRequires4 " in result.stdout, str(result)
     assert "TopoRequires " not in result.stdout
@@ -734,8 +781,8 @@ def test_list_pep610_editable(script: PipTestEnvironment) -> None:
     is correctly listed as editable.
     """
     pkg_path = _create_test_package(script.scratch_path, name="testpkg")
-    result = script.pip("install", pkg_path)
-    direct_url_path = get_created_direct_url_path(result, "testpkg")
+    result = script.pip("install", "--no-build-isolation", pkg_path)
+    direct_url_path = result.get_created_direct_url_path("testpkg")
     assert direct_url_path
     # patch direct_url.json to simulate an editable install
     with open(direct_url_path) as f:
@@ -751,3 +798,16 @@ def test_list_pep610_editable(script: PipTestEnvironment) -> None:
             break
     else:
         pytest.fail("package 'testpkg' not found in pip list result")
+
+
+def test_list_wheel_build(script: PipTestEnvironment) -> None:
+    package = make_wheel(
+        name="package",
+        version="3.0",
+        wheel_metadata_updates={"Build": "123"},
+    ).save_to_dir(script.scratch_path)
+    script.pip("install", package, "--no-index")
+
+    result = script.pip("list")
+    assert "Build" in result.stdout, str(result)
+    assert "123" in result.stdout, str(result)

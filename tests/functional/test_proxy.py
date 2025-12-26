@@ -1,6 +1,7 @@
 import ssl
+import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import proxy
 import pytest
@@ -17,7 +18,7 @@ from tests.lib.server import (
 
 
 class AccessLogPlugin(HttpProxyBasePlugin):
-    def on_access_log(self, context: Dict[str, Any]) -> None:
+    def on_access_log(self, context: dict[str, Any]) -> None:
         print(context)
 
 
@@ -76,6 +77,7 @@ def test_proxy_does_not_override_netrc(
         script.environ["NETRC"] = netrc
         script.pip(
             "install",
+            "--no-build-isolation",
             "--proxy",
             f"http://127.0.0.1:{proxy1.flags.port}",
             "--trusted-host",
@@ -92,6 +94,11 @@ def test_proxy_does_not_override_netrc(
         script.assert_installed(simple="3.0")
 
 
+@pytest.mark.xfail(
+    sys.version_info >= (3, 14),
+    reason="Access logs are blank intermittently on 3.14",
+    strict=False,
+)
 @pytest.mark.network
 def test_build_deps_use_proxy_from_cli(
     script: PipTestEnvironment, capfd: pytest.CaptureFixture[str], data: TestData

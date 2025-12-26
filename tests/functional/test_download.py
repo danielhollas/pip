@@ -5,7 +5,7 @@ import shutil
 import textwrap
 from hashlib import sha256
 from pathlib import Path
-from typing import Callable, List, Tuple
+from typing import Callable
 
 import pytest
 
@@ -17,7 +17,6 @@ from tests.lib import (
     ScriptFactory,
     TestData,
     TestPipResult,
-    create_basic_sdist_for_package,
     create_really_basic_wheel,
 )
 from tests.lib.server import MockServer, file_response
@@ -54,8 +53,18 @@ def test_download_wheel(script: PipTestEnvironment, data: TestData) -> None:
     """
     Test using "pip download" to download a *.whl archive.
     """
+    # This test needs --no-build-isolation because `meta` depends on `simple`
+    # which is a source distribution for which it needs to prepare metadata
+    # to look for transitive dependencies.
     result = script.pip(
-        "download", "--no-index", "-f", data.packages, "-d", ".", "meta"
+        "download",
+        "--no-build-isolation",
+        "--no-index",
+        "-f",
+        data.packages,
+        "-d",
+        ".",
+        "meta",
     )
     result.did_create(Path("scratch") / "meta-1.0-py2.py3-none-any.whl")
     result.did_not_create(script.site_packages / "piptestpackage")
@@ -122,61 +131,42 @@ def test_download_should_download_wheel_deps(
     dep_filename = "translationstring-1.1.tar.gz"
     wheel_path = "/".join((data.find_links, wheel_filename))
     result = script.pip(
-        "download", wheel_path, "-d", ".", "--find-links", data.find_links, "--no-index"
+        "download",
+        "--no-build-isolation",
+        wheel_path,
+        "-d",
+        ".",
+        "--find-links",
+        data.find_links,
+        "--no-index",
     )
     result.did_create(Path("scratch") / wheel_filename)
     result.did_create(Path("scratch") / dep_filename)
 
 
-@pytest.mark.network
-def test_download_should_skip_existing_files(script: PipTestEnvironment) -> None:
+def test_download_should_skip_existing_files(
+    script: PipTestEnvironment, data: TestData
+) -> None:
     """
     It should not download files already existing in the scratch dir
     """
-    script.scratch_path.joinpath("test-req.txt").write_text(
-        textwrap.dedent(
-            """
-        INITools==0.1
-        """
-        )
-    )
-
-    result = script.pip(
-        "download",
-        "-r",
-        script.scratch_path / "test-req.txt",
-        "-d",
-        ".",
-    )
-    result.did_create(Path("scratch") / "INITools-0.1.tar.gz")
-    result.did_not_create(script.site_packages / "initools")
+    req_file = script.temporary_file("reqs.txt", "simplewheel==1.0")
+    result = script.pip("download", "-r", req_file, "-f", data.packages, "--no-index")
+    result.did_create(Path("scratch") / "simplewheel-1.0-py2.py3-none-any.whl")
+    result.did_not_create(script.site_packages / "simplewheel")
 
     # adding second package to test-req.txt
-    script.scratch_path.joinpath("test-req.txt").write_text(
-        textwrap.dedent(
-            """
-        INITools==0.1
-        python-openid==2.2.5
-        """
-        )
-    )
+    script.temporary_file(req_file, "simplewheel==1.0\nsimple.dist")
 
     # only the second package should be downloaded
-    result = script.pip(
-        "download",
-        "-r",
-        script.scratch_path / "test-req.txt",
-        "-d",
-        ".",
-    )
-    openid_tarball_prefix = str(Path("scratch") / "python-openid-")
+    result = script.pip("download", "-r", req_file, "-f", data.packages, "--no-index")
     assert any(
-        os.fspath(path).startswith(openid_tarball_prefix)
+        os.fspath(path).startswith(str(Path("scratch") / "simple.dist"))
         for path in result.files_created
     )
-    result.did_not_create(Path("scratch") / "INITools-0.1.tar.gz")
-    result.did_not_create(script.site_packages / "initools")
-    result.did_not_create(script.site_packages / "openid")
+    result.did_not_create(Path("scratch") / "simplewheel-1.0-py2.py3-none-any.whl")
+    result.did_not_create(script.site_packages / "simplewheel")
+    result.did_not_create(script.site_packages / "simpledist")
 
 
 @pytest.mark.network
@@ -670,7 +660,7 @@ def test_download__python_version_used_for_python_requires(
     )
     wheel_dir = os.path.dirname(wheel_path)
 
-    def make_args(python_version: str) -> List[str]:
+    def make_args(python_version: str) -> list[str]:
         return [
             "download",
             "--no-index",
@@ -687,8 +677,7 @@ def test_download__python_version_used_for_python_requires(
     args = make_args("33")
     result = script.pip(*args, expect_error=True)
     expected_err = (
-        "ERROR: Package 'mypackage' requires a different Python: "
-        "3.3.0 not in '==3.2'"
+        "ERROR: Package 'mypackage' requires a different Python: 3.3.0 not in '==3.2'"
     )
     assert expected_err in result.stderr, f"stderr: {result.stderr}"
 
@@ -978,6 +967,7 @@ def test_download_prefer_binary_when_wheel_doesnt_satisfy_req(
 
     result = script.pip(
         "download",
+        "--no-build-isolation",
         "--prefer-binary",
         "--no-index",
         "-f",
@@ -1006,6 +996,7 @@ def test_prefer_binary_when_wheel_doesnt_satisfy_req_req_file(
 
     result = script.pip(
         "download",
+        "--no-build-isolation",
         "--no-index",
         "-f",
         data.packages,
@@ -1023,6 +1014,7 @@ def test_download_prefer_binary_when_only_tarball_exists(
 ) -> None:
     result = script.pip(
         "download",
+        "--no-build-isolation",
         "--prefer-binary",
         "--no-index",
         "-f",
@@ -1047,6 +1039,7 @@ def test_prefer_binary_when_only_tarball_exists_req_file(
     )
     result = script.pip(
         "download",
+        "--no-build-isolation",
         "--no-index",
         "-f",
         data.packages,
@@ -1078,6 +1071,7 @@ def test_download_file_url(
 
     shared_script.pip(
         "download",
+        "--no-build-isolation",
         "-d",
         str(download_dir),
         "--no-index",
@@ -1101,7 +1095,14 @@ def test_download_file_url_existing_ok_download(
     simple_pkg = shared_data.packages / "simple-1.0.tar.gz"
     url = f"{simple_pkg.as_uri()}#sha256={sha256(downloaded_path_bytes).hexdigest()}"
 
-    shared_script.pip("download", "-d", str(download_dir), url)
+    shared_script.pip(
+        "download",
+        "--no-build-isolation",
+        "-d",
+        str(download_dir),
+        url,
+        "--disable-pip-version-check",
+    )
 
     assert downloaded_path_bytes == downloaded_path.read_bytes()
 
@@ -1121,6 +1122,7 @@ def test_download_file_url_existing_bad_download(
 
     result = shared_script.pip(
         "download",
+        "--no-build-isolation",
         "-d",
         str(download_dir),
         url,
@@ -1157,6 +1159,7 @@ def test_download_http_url_bad_hash(
 
     result = shared_script.pip(
         "download",
+        "--no-build-isolation",
         "-d",
         str(download_dir),
         url,
@@ -1185,54 +1188,17 @@ def test_download_editable(
     requirements_path.write_text("-e " + editable_path + "\n")
     download_dir = tmpdir / "download_dir"
     script.pip(
-        "download", "--no-deps", "-r", str(requirements_path), "-d", str(download_dir)
+        "download",
+        "--no-build-isolation",
+        "--no-deps",
+        "-r",
+        str(requirements_path),
+        "-d",
+        str(download_dir),
     )
     downloads = os.listdir(download_dir)
     assert len(downloads) == 1
     assert downloads[0].endswith(".zip")
-
-
-def test_download_use_pep517_propagation(
-    script: PipTestEnvironment, tmpdir: Path, common_wheels: Path
-) -> None:
-    """
-    Check that --use-pep517 applies not just to the requirements specified
-    on the command line, but to their dependencies too.
-    """
-
-    create_basic_sdist_for_package(script, "fake_proj", "1.0", depends=["fake_dep"])
-
-    # If --use-pep517 is in effect, then setup.py should be running in an isolated
-    # environment that doesn't have pip in it.
-    create_basic_sdist_for_package(
-        script,
-        "fake_dep",
-        "1.0",
-        setup_py_prelude=textwrap.dedent(
-            """\
-            try:
-                import pip
-            except ImportError:
-                pass
-            else:
-                raise Exception(f"not running in isolation")
-            """
-        ),
-    )
-
-    download_dir = tmpdir / "download_dir"
-    script.pip(
-        "download",
-        f"--dest={download_dir}",
-        "--no-index",
-        f"--find-links={common_wheels}",
-        f"--find-links={script.scratch_path}",
-        "--use-pep517",
-        "fake_proj",
-    )
-
-    downloads = os.listdir(download_dir)
-    assert len(downloads) == 2
 
 
 @pytest.fixture
@@ -1240,20 +1206,21 @@ def download_local_html_index(
     script: PipTestEnvironment,
     html_index_for_packages: Path,
     tmpdir: Path,
-) -> Callable[..., Tuple[TestPipResult, Path]]:
+) -> Callable[..., tuple[TestPipResult, Path]]:
     """Execute `pip download` against a generated PyPI index."""
     download_dir = tmpdir / "download_dir"
 
     def run_for_generated_index(
-        args: List[str],
+        args: list[str],
         allow_error: bool = False,
-    ) -> Tuple[TestPipResult, Path]:
+    ) -> tuple[TestPipResult, Path]:
         """
         Produce a PyPI directory structure pointing to the specified packages, then
         execute `pip download -i ...` pointing to our generated index.
         """
         pip_args = [
             "download",
+            "--no-build-isolation",
             "-d",
             str(download_dir),
             "-i",
@@ -1271,20 +1238,21 @@ def download_server_html_index(
     script: PipTestEnvironment,
     tmpdir: Path,
     html_index_with_onetime_server: http.server.ThreadingHTTPServer,
-) -> Callable[..., Tuple[TestPipResult, Path]]:
+) -> Callable[..., tuple[TestPipResult, Path]]:
     """Execute `pip download` against a generated PyPI index."""
     download_dir = tmpdir / "download_dir"
 
     def run_for_generated_index(
-        args: List[str],
+        args: list[str],
         allow_error: bool = False,
-    ) -> Tuple[TestPipResult, Path]:
+    ) -> tuple[TestPipResult, Path]:
         """
         Produce a PyPI directory structure pointing to the specified packages, then
         execute `pip download -i ...` pointing to our generated index.
         """
         pip_args = [
             "download",
+            "--no-build-isolation",
             "-d",
             str(download_dir),
             "-i",
@@ -1313,9 +1281,9 @@ def download_server_html_index(
     ],
 )
 def test_download_metadata(
-    download_local_html_index: Callable[..., Tuple[TestPipResult, Path]],
+    download_local_html_index: Callable[..., tuple[TestPipResult, Path]],
     requirement_to_download: str,
-    expected_outputs: List[str],
+    expected_outputs: list[str],
 ) -> None:
     """Verify that if a data-dist-info-metadata attribute is present, then it is used
     instead of the actual dist's METADATA."""
@@ -1350,9 +1318,9 @@ def test_download_metadata(
     ],
 )
 def test_download_metadata_server(
-    download_server_html_index: Callable[..., Tuple[TestPipResult, Path]],
+    download_server_html_index: Callable[..., tuple[TestPipResult, Path]],
     requirement_to_download: str,
-    expected_outputs: List[str],
+    expected_outputs: list[str],
     doubled_path: str,
 ) -> None:
     """Verify that if a data-dist-info-metadata attribute is present, then it is used
@@ -1390,7 +1358,7 @@ def test_download_metadata_server(
     ],
 )
 def test_incorrect_metadata_hash(
-    download_local_html_index: Callable[..., Tuple[TestPipResult, Path]],
+    download_local_html_index: Callable[..., tuple[TestPipResult, Path]],
     requirement_to_download: str,
     real_hash: str,
 ) -> None:
@@ -1415,7 +1383,7 @@ def test_incorrect_metadata_hash(
     ],
 )
 def test_metadata_not_found(
-    download_local_html_index: Callable[..., Tuple[TestPipResult, Path]],
+    download_local_html_index: Callable[..., tuple[TestPipResult, Path]],
     requirement_to_download: str,
     expected_url: str,
 ) -> None:
@@ -1435,7 +1403,7 @@ def test_metadata_not_found(
 
 
 def test_produces_error_for_mismatched_package_name_in_metadata(
-    download_local_html_index: Callable[..., Tuple[TestPipResult, Path]],
+    download_local_html_index: Callable[..., tuple[TestPipResult, Path]],
 ) -> None:
     """Verify that the package name from the metadata matches the requested package."""
     result, _ = download_local_html_index(
@@ -1458,7 +1426,7 @@ def test_produces_error_for_mismatched_package_name_in_metadata(
     ],
 )
 def test_canonicalizes_package_name_before_verifying_metadata(
-    download_local_html_index: Callable[..., Tuple[TestPipResult, Path]],
+    download_local_html_index: Callable[..., tuple[TestPipResult, Path]],
     requirement: str,
 ) -> None:
     """Verify that the package name from the command line and the package's

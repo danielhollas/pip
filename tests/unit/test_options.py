@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from optparse import Values
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Iterator, List, Tuple, Type, Union, cast
+from typing import Any, cast
 
 import pytest
 
@@ -46,15 +49,15 @@ class TestOptionPrecedence(AddFakeCommandMixin):
         defaults
     """
 
-    def get_config_section(self, section: str) -> List[Tuple[str, str]]:
+    def get_config_section(self, section: str) -> list[tuple[str, str]]:
         config = {
             "global": [("timeout", "-3")],
             "fake": [("timeout", "-2")],
         }
         return config[section]
 
-    def get_config_section_global(self, section: str) -> List[Tuple[str, str]]:
-        config: Dict[str, List[Tuple[str, str]]] = {
+    def get_config_section_global(self, section: str) -> list[tuple[str, str]]:
+        config: dict[str, list[tuple[str, str]]] = {
             "global": [("timeout", "-3")],
             "fake": [],
         }
@@ -66,31 +69,31 @@ class TestOptionPrecedence(AddFakeCommandMixin):
         """
         monkeypatch.setenv("PIP_TIMEOUT", "-1")
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["fake"]))
         assert options.timeout == -1
 
     @pytest.mark.parametrize("values", [["F1"], ["F1", "F2"]])
     def test_env_override_default_append(
-        self, values: List[str], monkeypatch: pytest.MonkeyPatch
+        self, values: list[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """
         Test that environment variable overrides an append option default.
         """
         monkeypatch.setenv("PIP_FIND_LINKS", " ".join(values))
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["fake"]))
         assert options.find_links == values
 
     @pytest.mark.parametrize("choices", [["w"], ["s", "w"]])
     def test_env_override_default_choice(
-        self, choices: List[str], monkeypatch: pytest.MonkeyPatch
+        self, choices: list[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """
         Test that environment variable overrides a choice option default.
         """
         monkeypatch.setenv("PIP_EXISTS_ACTION", " ".join(choices))
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["fake"]))
         assert options.exists_action == choices
 
     @pytest.mark.parametrize("name", ["PIP_LOG_FILE", "PIP_LOCAL_LOG"])
@@ -104,7 +107,7 @@ class TestOptionPrecedence(AddFakeCommandMixin):
         """
         monkeypatch.setenv(name, "override.log")
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["fake"]))
         assert options.log == "override.log"
 
     def test_cli_override_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -114,7 +117,7 @@ class TestOptionPrecedence(AddFakeCommandMixin):
         monkeypatch.setenv("PIP_TIMEOUT", "-1")
         # FakeCommand intentionally returns the wrong type.
         options, args = cast(
-            Tuple[Values, List[str]], main(["fake", "--timeout", "-2"])
+            tuple[Values, list[str]], main(["fake", "--timeout", "-2"])
         )
         assert options.timeout == -2
 
@@ -143,7 +146,7 @@ class TestOptionPrecedence(AddFakeCommandMixin):
         """
         monkeypatch.setenv("PIP_NO_CACHE_DIR", pip_no_cache_dir)
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["fake"]))
         assert options.cache_dir is False
 
     @pytest.mark.parametrize("pip_no_cache_dir", ["yes", "no"])
@@ -159,7 +162,7 @@ class TestOptionPrecedence(AddFakeCommandMixin):
         monkeypatch.setenv("PIP_NO_CACHE_DIR", pip_no_cache_dir)
         # FakeCommand intentionally returns the wrong type.
         options, args = cast(
-            Tuple[Values, List[str]], main(["--cache-dir", "/cache/dir", "fake"])
+            tuple[Values, list[str]], main(["--cache-dir", "/cache/dir", "fake"])
         )
         # The command-line flag takes precedence.
         assert options.cache_dir == "/cache/dir"
@@ -175,7 +178,7 @@ class TestOptionPrecedence(AddFakeCommandMixin):
         """
         monkeypatch.setenv("PIP_NO_CACHE_DIR", pip_no_cache_dir)
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["--no-cache-dir", "fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["--no-cache-dir", "fake"]))
         # The command-line flag should take precedence (which has the same
         # value in this case).
         assert options.cache_dir is False
@@ -195,109 +198,24 @@ class TestOptionPrecedence(AddFakeCommandMixin):
             main(["--no-cache-dir", "fake"])
 
 
-class TestUsePEP517Options:
-    """
-    Test options related to using --use-pep517.
-    """
-
-    def parse_args(self, args: List[str]) -> Values:
-        # We use DownloadCommand since that is one of the few Command
-        # classes with the use_pep517 options.
-        command = create_command("download")
-        options, args = command.parse_args(args)
-
-        return options
-
-    def test_no_option(self) -> None:
-        """
-        Test passing no option.
-        """
-        options = self.parse_args([])
-        assert options.use_pep517 is None
-
-    def test_use_pep517(self) -> None:
-        """
-        Test passing --use-pep517.
-        """
-        options = self.parse_args(["--use-pep517"])
-        assert options.use_pep517 is True
-
-    def test_no_use_pep517(self) -> None:
-        """
-        Test passing --no-use-pep517.
-        """
-        options = self.parse_args(["--no-use-pep517"])
-        assert options.use_pep517 is False
-
-    def test_PIP_USE_PEP517_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """
-        Test setting PIP_USE_PEP517 to "true".
-        """
-        monkeypatch.setenv("PIP_USE_PEP517", "true")
-        options = self.parse_args([])
-        # This is an int rather than a boolean because strtobool() in pip's
-        # configuration code returns an int.
-        assert options.use_pep517 == 1
-
-    def test_PIP_USE_PEP517_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """
-        Test setting PIP_USE_PEP517 to "false".
-        """
-        monkeypatch.setenv("PIP_USE_PEP517", "false")
-        options = self.parse_args([])
-        # This is an int rather than a boolean because strtobool() in pip's
-        # configuration code returns an int.
-        assert options.use_pep517 == 0
-
-    def test_use_pep517_and_PIP_USE_PEP517_false(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """
-        Test passing --use-pep517 and setting PIP_USE_PEP517 to "false".
-        """
-        monkeypatch.setenv("PIP_USE_PEP517", "false")
-        options = self.parse_args(["--use-pep517"])
-        assert options.use_pep517 is True
-
-    def test_no_use_pep517_and_PIP_USE_PEP517_true(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """
-        Test passing --no-use-pep517 and setting PIP_USE_PEP517 to "true".
-        """
-        monkeypatch.setenv("PIP_USE_PEP517", "true")
-        options = self.parse_args(["--no-use-pep517"])
-        assert options.use_pep517 is False
-
-    def test_PIP_NO_USE_PEP517(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """
-        Test setting PIP_NO_USE_PEP517, which isn't allowed.
-        """
-        monkeypatch.setenv("PIP_NO_USE_PEP517", "true")
-        with assert_option_error(capsys, expected="--no-use-pep517 error"):
-            self.parse_args([])
-
-
 class TestOptionsInterspersed(AddFakeCommandMixin):
     def test_general_option_after_subcommand(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options, args = cast(
-            Tuple[Values, List[str]], main(["fake", "--timeout", "-1"])
+            tuple[Values, list[str]], main(["fake", "--timeout", "-1"])
         )
         assert options.timeout == -1
 
     def test_option_after_subcommand_arg(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options, args = cast(
-            Tuple[Values, List[str]], main(["fake", "arg", "--timeout", "-1"])
+            tuple[Values, list[str]], main(["fake", "arg", "--timeout", "-1"])
         )
         assert options.timeout == -1
 
     def test_additive_before_after_subcommand(self) -> None:
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["-v", "fake", "-v"]))
+        options, args = cast(tuple[Values, list[str]], main(["-v", "fake", "-v"]))
         assert options.verbose == 2
 
     def test_subcommand_option_before_subcommand_fails(self) -> None:
@@ -322,8 +240,8 @@ class TestCountOptions(AddFakeCommandMixin):
     def test_cli_long(self, option: str, value: int) -> None:
         flags = [f"--{option}"] * value
         # FakeCommand intentionally returns the wrong type.
-        opt1, args1 = cast(Tuple[Values, List[str]], main(flags + ["fake"]))
-        opt2, args2 = cast(Tuple[Values, List[str]], main(["fake"] + flags))
+        opt1, args1 = cast(tuple[Values, list[str]], main(flags + ["fake"]))
+        opt2, args2 = cast(tuple[Values, list[str]], main(["fake"] + flags))
         assert getattr(opt1, option) == getattr(opt2, option) == value
 
     @pytest.mark.parametrize("option", ["verbose", "quiet"])
@@ -331,8 +249,8 @@ class TestCountOptions(AddFakeCommandMixin):
     def test_cli_short(self, option: str, value: int) -> None:
         flag = "-" + option[0] * value
         # FakeCommand intentionally returns the wrong type.
-        opt1, args1 = cast(Tuple[Values, List[str]], main([flag, "fake"]))
-        opt2, args2 = cast(Tuple[Values, List[str]], main(["fake", flag]))
+        opt1, args1 = cast(tuple[Values, list[str]], main([flag, "fake"]))
+        opt2, args2 = cast(tuple[Values, list[str]], main(["fake", flag]))
         assert getattr(opt1, option) == getattr(opt2, option) == value
 
     @pytest.mark.parametrize("option", ["verbose", "quiet"])
@@ -342,7 +260,7 @@ class TestCountOptions(AddFakeCommandMixin):
     ) -> None:
         monkeypatch.setenv("PIP_" + option.upper(), str(value))
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["fake"]))
         assert getattr(options, option) == value
 
     @pytest.mark.parametrize("option", ["verbose", "quiet"])
@@ -352,7 +270,7 @@ class TestCountOptions(AddFakeCommandMixin):
     ) -> None:
         monkeypatch.setenv("PIP_" + option.upper(), str(value))
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["fake", "--" + option]))
+        options, args = cast(tuple[Values, list[str]], main(["fake", "--" + option]))
         assert getattr(options, option) == value + 1
 
     @pytest.mark.parametrize("option", ["verbose", "quiet"])
@@ -376,7 +294,7 @@ class TestCountOptions(AddFakeCommandMixin):
     ) -> None:
         monkeypatch.setenv("PIP_" + option.upper(), str(value))
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["fake"]))
         assert getattr(options, option) == 0
 
     # Undocumented, support for backward compatibility
@@ -387,7 +305,7 @@ class TestCountOptions(AddFakeCommandMixin):
     ) -> None:
         monkeypatch.setenv("PIP_" + option.upper(), str(value))
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["fake"]))
         assert getattr(options, option) == 1
 
     @pytest.mark.parametrize("option", ["verbose", "quiet"])
@@ -398,7 +316,7 @@ class TestCountOptions(AddFakeCommandMixin):
         with tmpconfig(option, value) as name:
             monkeypatch.setenv("PIP_CONFIG_FILE", name)
             # FakeCommand intentionally returns the wrong type.
-            options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+            options, args = cast(tuple[Values, list[str]], main(["fake"]))
             assert getattr(options, option) == value
 
     @pytest.mark.parametrize("option", ["verbose", "quiet"])
@@ -410,7 +328,7 @@ class TestCountOptions(AddFakeCommandMixin):
             monkeypatch.setenv("PIP_CONFIG_FILE", name)
             # FakeCommand intentionally returns the wrong type.
             options, args = cast(
-                Tuple[Values, List[str]], main(["fake", "--" + option])
+                tuple[Values, list[str]], main(["fake", "--" + option])
             )
             assert getattr(options, option) == value + 1
 
@@ -437,7 +355,7 @@ class TestCountOptions(AddFakeCommandMixin):
         with tmpconfig(option, value) as name:
             monkeypatch.setenv("PIP_CONFIG_FILE", name)
             # FakeCommand intentionally returns the wrong type.
-            options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+            options, args = cast(tuple[Values, list[str]], main(["fake"]))
             assert getattr(options, option) == 0
 
     # Undocumented, support for backward compatibility
@@ -449,7 +367,7 @@ class TestCountOptions(AddFakeCommandMixin):
         with tmpconfig(option, value) as name:
             monkeypatch.setenv("PIP_CONFIG_FILE", name)
             # FakeCommand intentionally returns the wrong type.
-            options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+            options, args = cast(tuple[Values, list[str]], main(["fake"]))
             assert getattr(options, option) == 1
 
 
@@ -459,29 +377,29 @@ class TestGeneralOptions(AddFakeCommandMixin):
 
     def test_cache_dir__default(self) -> None:
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["fake"]))
         # With no options the default cache dir should be used.
         assert_is_default_cache_dir(options.cache_dir)
 
     def test_cache_dir__provided(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options, args = cast(
-            Tuple[Values, List[str]], main(["--cache-dir", "/cache/dir", "fake"])
+            tuple[Values, list[str]], main(["--cache-dir", "/cache/dir", "fake"])
         )
         assert options.cache_dir == "/cache/dir"
 
     def test_no_cache_dir__provided(self) -> None:
         # FakeCommand intentionally returns the wrong type.
-        options, args = cast(Tuple[Values, List[str]], main(["--no-cache-dir", "fake"]))
+        options, args = cast(tuple[Values, list[str]], main(["--no-cache-dir", "fake"]))
         assert options.cache_dir is False
 
     def test_require_virtualenv(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options1, args1 = cast(
-            Tuple[Values, List[str]], main(["--require-virtualenv", "fake"])
+            tuple[Values, list[str]], main(["--require-virtualenv", "fake"])
         )
         options2, args2 = cast(
-            Tuple[Values, List[str]], main(["fake", "--require-virtualenv"])
+            tuple[Values, list[str]], main(["fake", "--require-virtualenv"])
         )
         assert options1.require_venv
         assert options2.require_venv
@@ -489,87 +407,87 @@ class TestGeneralOptions(AddFakeCommandMixin):
     def test_log(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options1, args1 = cast(
-            Tuple[Values, List[str]], main(["--log", "path", "fake"])
+            tuple[Values, list[str]], main(["--log", "path", "fake"])
         )
         options2, args2 = cast(
-            Tuple[Values, List[str]], main(["fake", "--log", "path"])
+            tuple[Values, list[str]], main(["fake", "--log", "path"])
         )
         assert options1.log == options2.log == "path"
 
     def test_local_log(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options1, args1 = cast(
-            Tuple[Values, List[str]], main(["--local-log", "path", "fake"])
+            tuple[Values, list[str]], main(["--local-log", "path", "fake"])
         )
         options2, args2 = cast(
-            Tuple[Values, List[str]], main(["fake", "--local-log", "path"])
+            tuple[Values, list[str]], main(["fake", "--local-log", "path"])
         )
         assert options1.log == options2.log == "path"
 
     def test_no_input(self) -> None:
         # FakeCommand intentionally returns the wrong type.
-        options1, args1 = cast(Tuple[Values, List[str]], main(["--no-input", "fake"]))
-        options2, args2 = cast(Tuple[Values, List[str]], main(["fake", "--no-input"]))
+        options1, args1 = cast(tuple[Values, list[str]], main(["--no-input", "fake"]))
+        options2, args2 = cast(tuple[Values, list[str]], main(["fake", "--no-input"]))
         assert options1.no_input
         assert options2.no_input
 
     def test_proxy(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options1, args1 = cast(
-            Tuple[Values, List[str]], main(["--proxy", "path", "fake"])
+            tuple[Values, list[str]], main(["--proxy", "path", "fake"])
         )
         options2, args2 = cast(
-            Tuple[Values, List[str]], main(["fake", "--proxy", "path"])
+            tuple[Values, list[str]], main(["fake", "--proxy", "path"])
         )
         assert options1.proxy == options2.proxy == "path"
 
     def test_retries(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options1, args1 = cast(
-            Tuple[Values, List[str]], main(["--retries", "-1", "fake"])
+            tuple[Values, list[str]], main(["--retries", "-1", "fake"])
         )
         options2, args2 = cast(
-            Tuple[Values, List[str]], main(["fake", "--retries", "-1"])
+            tuple[Values, list[str]], main(["fake", "--retries", "-1"])
         )
         assert options1.retries == options2.retries == -1
 
     def test_timeout(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options1, args1 = cast(
-            Tuple[Values, List[str]], main(["--timeout", "-1", "fake"])
+            tuple[Values, list[str]], main(["--timeout", "-1", "fake"])
         )
         options2, args2 = cast(
-            Tuple[Values, List[str]], main(["fake", "--timeout", "-1"])
+            tuple[Values, list[str]], main(["fake", "--timeout", "-1"])
         )
         assert options1.timeout == options2.timeout == -1
 
     def test_exists_action(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options1, args1 = cast(
-            Tuple[Values, List[str]], main(["--exists-action", "w", "fake"])
+            tuple[Values, list[str]], main(["--exists-action", "w", "fake"])
         )
         options2, args2 = cast(
-            Tuple[Values, List[str]], main(["fake", "--exists-action", "w"])
+            tuple[Values, list[str]], main(["fake", "--exists-action", "w"])
         )
         assert options1.exists_action == options2.exists_action == ["w"]
 
     def test_cert(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options1, args1 = cast(
-            Tuple[Values, List[str]], main(["--cert", "path", "fake"])
+            tuple[Values, list[str]], main(["--cert", "path", "fake"])
         )
         options2, args2 = cast(
-            Tuple[Values, List[str]], main(["fake", "--cert", "path"])
+            tuple[Values, list[str]], main(["fake", "--cert", "path"])
         )
         assert options1.cert == options2.cert == "path"
 
     def test_client_cert(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options1, args1 = cast(
-            Tuple[Values, List[str]], main(["--client-cert", "path", "fake"])
+            tuple[Values, list[str]], main(["--client-cert", "path", "fake"])
         )
         options2, args2 = cast(
-            Tuple[Values, List[str]], main(["fake", "--client-cert", "path"])
+            tuple[Values, list[str]], main(["fake", "--client-cert", "path"])
         )
         assert options1.client_cert == options2.client_cert == "path"
 
@@ -604,8 +522,8 @@ class TestOptionsConfigFiles:
     def test_config_file_options(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        args: List[str],
-        expect: Union[None, str, Type[PipError]],
+        args: list[str],
+        expect: None | str | type[PipError],
     ) -> None:
         cmd = cast(ConfigurationCommand, create_command("config"))
         # Replace a handler with a no-op to avoid side effects
@@ -623,34 +541,34 @@ class TestOptionsExpandUser(AddFakeCommandMixin):
     def test_cache_dir(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options, args = cast(
-            Tuple[Values, List[str]], main(["--cache-dir", "~/cache/dir", "fake"])
+            tuple[Values, list[str]], main(["--cache-dir", "~/cache/dir", "fake"])
         )
         assert options.cache_dir == os.path.expanduser("~/cache/dir")
 
     def test_log(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options, args = cast(
-            Tuple[Values, List[str]], main(["--log", "~/path", "fake"])
+            tuple[Values, list[str]], main(["--log", "~/path", "fake"])
         )
         assert options.log == os.path.expanduser("~/path")
 
     def test_local_log(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options, args = cast(
-            Tuple[Values, List[str]], main(["--local-log", "~/path", "fake"])
+            tuple[Values, list[str]], main(["--local-log", "~/path", "fake"])
         )
         assert options.log == os.path.expanduser("~/path")
 
     def test_cert(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options, args = cast(
-            Tuple[Values, List[str]], main(["--cert", "~/path", "fake"])
+            tuple[Values, list[str]], main(["--cert", "~/path", "fake"])
         )
         assert options.cert == os.path.expanduser("~/path")
 
     def test_client_cert(self) -> None:
         # FakeCommand intentionally returns the wrong type.
         options, args = cast(
-            Tuple[Values, List[str]], main(["--client-cert", "~/path", "fake"])
+            tuple[Values, list[str]], main(["--client-cert", "~/path", "fake"])
         )
         assert options.client_cert == os.path.expanduser("~/path")

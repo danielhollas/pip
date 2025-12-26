@@ -3,6 +3,7 @@
 #       so this module remains fast to import, minimizing the overhead of
 #       spawning a new bytecode compiler worker.
 # -------------------------------------------------------------------------- #
+from __future__ import annotations
 
 import compileall
 import importlib
@@ -13,7 +14,7 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager, redirect_stdout
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NamedTuple, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Literal, NamedTuple, Protocol, Union
 
 if TYPE_CHECKING:
     from pip._vendor.typing_extensions import Self
@@ -52,7 +53,7 @@ class CompileResult(NamedTuple):
     compile_output: str
 
 
-def _compile_single(py_path: Union[str, Path]) -> CompileResult:
+def _compile_single(py_path: str | Path) -> CompileResult:
     # compile_file() returns True silently even if the source file is nonexistent.
     if not os.path.exists(py_path):
         raise FileNotFoundError(f"Python file '{py_path!s}' does not exist")
@@ -60,10 +61,8 @@ def _compile_single(py_path: Union[str, Path]) -> CompileResult:
     with warnings.catch_warnings(), redirect_stdout(StringIO()) as stdout:
         warnings.filterwarnings("ignore")
         success = compileall.compile_file(py_path, force=True, quiet=True)
-    pyc_path = importlib.util.cache_from_source(py_path)  # type: ignore[arg-type]
-    return CompileResult(
-        str(py_path), pyc_path, success, stdout.getvalue()  # type: ignore[arg-type]
-    )
+    pyc_path = importlib.util.cache_from_source(py_path)  # type: ignore[attr-defined]
+    return CompileResult(str(py_path), pyc_path, success, stdout.getvalue())
 
 
 class BytecodeCompiler(Protocol):
@@ -71,7 +70,7 @@ class BytecodeCompiler(Protocol):
 
     def __call__(self, paths: Iterable[str]) -> Iterable[CompileResult]: ...
 
-    def __enter__(self) -> "Self":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *args: object) -> None:
@@ -81,7 +80,7 @@ class BytecodeCompiler(Protocol):
 class SerialCompiler(BytecodeCompiler):
     """Compile a set of Python modules one by one in-process."""
 
-    def __call__(self, paths: Iterable[Union[str, Path]]) -> Iterable[CompileResult]:
+    def __call__(self, paths: Iterable[str | Path]) -> Iterable[CompileResult]:
         for p in paths:
             yield _compile_single(p)
 
@@ -99,7 +98,7 @@ class ParallelCompiler(BytecodeCompiler):
             self.pool = futures.ProcessPoolExecutor(workers)
         self.workers = workers
 
-    def __call__(self, paths: Iterable[Union[str, Path]]) -> Iterable[CompileResult]:
+    def __call__(self, paths: Iterable[str | Path]) -> Iterable[CompileResult]:
         # New workers can be started at any time, so patch until fully done.
         with _patch_main_module_hack():
             yield from self.pool.map(_compile_single, paths)
@@ -111,7 +110,7 @@ class ParallelCompiler(BytecodeCompiler):
 
 def create_bytecode_compiler(
     max_workers: WorkerSetting = "auto",
-    code_size_check: Optional[Callable[[int], bool]] = None,
+    code_size_check: Callable[[int], bool] | None = None,
 ) -> BytecodeCompiler:
     """Return a bytecode compiler appropriate for the workload and platform.
 
@@ -131,7 +130,7 @@ def create_bytecode_compiler(
 
     try:
         # New in Python 3.13.
-        cpus: Optional[int] = os.process_cpu_count()  # type: ignore
+        cpus: int | None = os.process_cpu_count()  # type: ignore
     except AttributeError:
         # Poor man's fallback. We won't respect PYTHON_CPU_COUNT, but the envvar
         # was only added in Python 3.13 anyway.

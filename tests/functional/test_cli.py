@@ -24,7 +24,7 @@ def test_entrypoints_work(entrypoint: str, script: PipTestEnvironment) -> None:
     if script.zipapp:
         pytest.skip("Zipapp does not include entrypoints")
 
-    fake_pkg = script.temp_path / "fake_pkg"
+    fake_pkg = script.scratch_path / "fake_pkg"
     fake_pkg.mkdir()
     fake_pkg.joinpath("setup.py").write_text(
         dedent(
@@ -45,7 +45,9 @@ def test_entrypoints_work(entrypoint: str, script: PipTestEnvironment) -> None:
     )
 
     # expect_temp because pip install will generate fake_pkg.egg-info
-    script.pip("install", "-vvv", str(fake_pkg), expect_temp=True)
+    script.pip(
+        "install", "--no-build-isolation", "-vvv", str(fake_pkg), expect_temp=True
+    )
     result = script.pip("-V")
     result2 = script.run("fake_pip", "-V", allow_stderr_warning=True)
     assert result.stdout == result2.stdout
@@ -57,7 +59,7 @@ def test_entrypoints_work(entrypoint: str, script: PipTestEnvironment) -> None:
     sorted(
         set(commands_dict).symmetric_difference(
             # Exclude commands that are expected to use the network.
-            {"install", "download", "search", "index", "wheel"}
+            {"install", "download", "search", "index", "lock", "wheel"}
         )
     ),
 )

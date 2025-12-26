@@ -28,8 +28,8 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6.0.1
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
       - run: pip install nox
@@ -63,12 +63,15 @@ jobs:
         if: github.event_name == 'pull_request'
 
   packaging:
-    name: packaging
-    runs-on: ubuntu-22.04
+    name: packaging / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6.0.1
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
       - name: Set up git credentials
@@ -79,7 +82,7 @@ jobs:
       - run: pip install nox
       - run: nox -s prepare-release -- 99.9
       - run: nox -s build-release -- 99.9
-      - run: pipx run check-manifest
+      - run: pipx run check-sdist
 
   vendoring:
     name: vendoring
@@ -91,8 +94,8 @@ jobs:
       github.event_name != 'pull_request'
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6.0.1
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.x"
 
@@ -104,7 +107,7 @@ jobs:
     name: tests / ${{ matrix.python.key || matrix.python }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
 
-    needs: [packaging, determine-changes]
+    needs: [determine-changes]
     if: >-
       needs.determine-changes.outputs.tests == 'true' ||
       github.event_name != 'pull_request'
@@ -112,17 +115,18 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        os: [ubuntu-22.04, macos-13, macos-latest]
+        os: [ubuntu-22.04, macos-latest]
         python:
           - "3.9"
           - "3.10"
           - "3.11"
           - "3.12"
           - "3.13"
+          - "3.14"
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6.0.1
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
@@ -155,13 +159,13 @@ jobs:
           nox -s test-${{ matrix.python.key || matrix.python }} --no-install --
           tests/functional
           --verbose --numprocesses auto --showlocals
-          --durations=5
+          --durations=15
 
   tests-windows:
     name: tests / ${{ matrix.python }} / ${{ matrix.os }} / ${{ matrix.group.number }}
     runs-on: ${{ matrix.os }}-latest
 
-    needs: [packaging, determine-changes]
+    needs: [determine-changes]
     if: >-
       needs.determine-changes.outputs.tests == 'true' ||
       github.event_name != 'pull_request'
@@ -178,6 +182,7 @@ jobs:
           # - "3.11"
           # - "3.12"
           - "3.13"
+          - "3.14"
         group:
           - { number: 1, pytest-filter: "not test_install" }
           - { number: 2, pytest-filter: "test_install" }
@@ -190,11 +195,17 @@ jobs:
           mkdir "D:\\Temp"
           echo "TEMP=D:\\Temp" >> $env:GITHUB_ENV
 
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6.0.1
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           allow-prereleases: true
+
+      - name: Install SVN via Chocolatey
+        shell: pwsh
+        run: |
+          choco install svn -y --no-progress
+          echo "C:\Program Files (x86)\Subversion\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - run: pip install nox
 
@@ -210,7 +221,7 @@ jobs:
         run: >-
           nox -s test-${{ matrix.python }} --no-install --
           tests/functional -k "${{ matrix.group.pytest-filter }}"
-          --verbose --numprocesses auto --showlocals
+          --verbose --numprocesses auto --showlocals --durations=15
 
   tests-zipapp:
     name: tests / zipapp
@@ -225,8 +236,8 @@ jobs:
       github.event_name != 'pull_request'
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6.0.1
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
 
@@ -241,7 +252,7 @@ jobs:
           nox -s test-3.10 --
           tests/functional
           --verbose --numprocesses auto --showlocals
-          --durations=5
+          --durations=15
           --use-zipapp
 
   check:  # This job does nothing and is only used for the branch protection

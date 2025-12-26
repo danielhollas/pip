@@ -1,7 +1,10 @@
 import errno
+import sys
 from unittest import mock
 
 import pytest
+
+from pip._vendor.requests.exceptions import InvalidProxyURL
 
 from pip._internal.commands import install
 from pip._internal.commands.install import create_os_error_message, decide_user_install
@@ -107,6 +110,66 @@ class TestDecideUserInstall:
             "Could not install packages due to an OSError: [Errno 13] No"
             " file permission\nConsider using the `--user` option or check the"
             " permissions.\n",
+        ),
+        # Testing custom InvalidProxyURL with help message
+        #  show_traceback = True, using_user_site = True
+        (
+            InvalidProxyURL(),
+            True,
+            True,
+            "Could not install packages due to an OSError.\n"
+            "Consider checking your local proxy configuration"
+            ' with "pip config debug".\n',
+        ),
+        # Testing both long path error (ENOENT)
+        # and long file/folder name error (EINVAL) on Windows
+        pytest.param(
+            OSError(errno.ENOENT, "No such file or directory", f"C:{'/a'*261}"),
+            False,
+            False,
+            "Could not install packages due to an OSError: "
+            f"[Errno 2] No such file or directory: 'C:{'/a'*261}'\n"
+            "HINT: This error might have occurred since "
+            "this system does not have Windows Long Path "
+            "support enabled. You can find information on "
+            "how to enable this at "
+            "https://pip.pypa.io/warnings/enable-long-paths\n",
+            marks=pytest.mark.skipif(
+                sys.platform != "win32", reason="Windows-specific filename length test"
+            ),
+        ),
+        pytest.param(
+            OSError(errno.EINVAL, "No such file or directory", f"C:/{'a'*256}"),
+            False,
+            False,
+            "Could not install packages due to an OSError: "
+            f"[Errno 22] No such file or directory: 'C:/{'a'*256}'\n"
+            "HINT: This error might be caused by a file or folder name exceeding "
+            "255 characters, which is a Windows limitation even if long paths "
+            "are enabled.\n",
+            marks=pytest.mark.skipif(
+                sys.platform != "win32", reason="Windows-specific filename length test"
+            ),
+        ),
+        pytest.param(
+            OSError(
+                errno.EINVAL, "No such file or directory", f"C:{'/a'*261}/{'b'*256}"
+            ),
+            False,
+            False,
+            "Could not install packages due to an OSError: "
+            f"[Errno 22] No such file or directory: 'C:{'/a' * 261}/{'b' * 256}'\n"
+            "HINT: This error might be caused by a file or folder name exceeding "
+            "255 characters, which is a Windows limitation even if long paths "
+            "are enabled.\n "
+            "HINT: This error might have occurred since "
+            "this system does not have Windows Long Path "
+            "support enabled. You can find information on "
+            "how to enable this at "
+            "https://pip.pypa.io/warnings/enable-long-paths\n",
+            marks=pytest.mark.skipif(
+                sys.platform != "win32", reason="Windows-specific filename length test"
+            ),
         ),
     ],
 )

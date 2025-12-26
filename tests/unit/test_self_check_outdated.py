@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime
 import json
 import logging
@@ -5,7 +7,6 @@ import os
 import sys
 from optparse import Values
 from pathlib import Path
-from typing import Optional
 from unittest.mock import ANY, Mock, patch
 
 import pytest
@@ -88,7 +89,7 @@ def test_pip_self_version_check_calls_underlying_implementation(
 def test_core_logic(
     installed_version: str,
     remote_version: str,
-    stored_version: Optional[str],
+    stored_version: str | None,
     installed_by_pip: bool,
     should_show_prompt: bool,
     caplog: pytest.LogCaptureFixture,
@@ -188,6 +189,11 @@ class TestSelfCheckState:
             "last_check": "2000-01-01T00:00:00+00:00",
             "pypi_version": "1.0.0",
         }
+        # Check that the self-check cache entries inherit the root cache permissions.
+        statefile_permissions = os.stat(expected_path).st_mode & 0o666
+        selfcheckdir_permissions = os.stat(cache_dir / "selfcheck").st_mode & 0o666
+        cache_permissions = os.stat(cache_dir).st_mode & 0o666
+        assert statefile_permissions == selfcheckdir_permissions == cache_permissions
 
 
 @patch("pip._internal.self_outdated_check._self_version_check_logic")

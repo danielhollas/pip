@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 import collections
 import logging
+from collections.abc import Generator, Iterable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
-from typing import Generator, Iterable, List, Optional, Sequence, Tuple
 from zipfile import ZipFile
 
-from pip._internal.cli.progress_bars import get_install_progress_renderer
+from pip._internal.cli.progress_bars import BarType, get_install_progress_renderer
 from pip._internal.utils.logging import indent_log
 from pip._internal.utils.pyc_compile import WorkerSetting, create_bytecode_compiler
 
@@ -30,8 +32,8 @@ class InstallationResult:
 
 
 def _validate_requirements(
-    requirements: List[InstallRequirement],
-) -> Generator[Tuple[str, InstallRequirement], None, None]:
+    requirements: list[InstallRequirement],
+) -> Generator[tuple[str, InstallRequirement], None, None]:
     for req in requirements:
         assert req.name, f"invalid to-be-installed requirement: {req}"
         yield req.name, req
@@ -60,17 +62,16 @@ def _does_python_size_surpass_threshold(
 
 
 def install_given_reqs(
-    requirements: List[InstallRequirement],
-    global_options: Sequence[str],
-    root: Optional[str],
-    home: Optional[str],
-    prefix: Optional[str],
+    requirements: list[InstallRequirement],
+    root: str | None,
+    home: str | None,
+    prefix: str | None,
     warn_script_location: bool,
     use_user_site: bool,
     pycompile: bool,
-    progress_bar: str,
+    progress_bar: BarType,
     workers: WorkerSetting,
-) -> List[InstallationResult]:
+) -> list[InstallationResult]:
     """
     Install everything in the given list.
 
@@ -116,7 +117,6 @@ def install_given_reqs(
 
             try:
                 requirement.install(
-                    global_options,
                     root=root,
                     home=home,
                     prefix=prefix,

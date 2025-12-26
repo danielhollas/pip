@@ -5,8 +5,8 @@ import glob
 import os
 import shutil
 import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, List, Tuple
 
 import nox
 
@@ -23,11 +23,6 @@ nox.needs_version = ">=2024.03.02"  # for session.run_install()
 LOCATIONS = {
     "common-wheels": "tests/data/common_wheels",
     "protected-pip": "tools/protected_pip.py",
-}
-REQUIREMENTS = {
-    "docs": "docs/requirements.txt",
-    "tests": "tests/requirements.txt",
-    "common-wheels": "tests/requirements-common_wheels.txt",
 }
 
 AUTHORS_FILE = "AUTHORS.txt"
@@ -54,10 +49,10 @@ def should_update_common_wheels() -> bool:
     if not os.path.exists(LOCATIONS["common-wheels"]):
         return True
 
-    # If the requirements was updated after cache, we'll repopulate it.
+    # If the pyproject.toml was updated after cache, we'll repopulate it.
     cache_last_populated_at = os.path.getmtime(LOCATIONS["common-wheels"])
-    requirements_updated_at = os.path.getmtime(REQUIREMENTS["common-wheels"])
-    need_to_repopulate = requirements_updated_at > cache_last_populated_at
+    pyproject_updated_at = os.path.getmtime("pyproject.toml")
+    need_to_repopulate = pyproject_updated_at > cache_last_populated_at
 
     # Clear the stale cache.
     if need_to_repopulate:
@@ -69,7 +64,7 @@ def should_update_common_wheels() -> bool:
 # -----------------------------------------------------------------------------
 # Development Commands
 # -----------------------------------------------------------------------------
-@nox.session(python=["3.9", "3.10", "3.11", "3.12", "3.13", "pypy3"])
+@nox.session(python=["3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "pypy3"])
 def test(session: nox.Session) -> None:
     # Get the common wheels.
     if should_update_common_wheels():
@@ -78,7 +73,7 @@ def test(session: nox.Session) -> None:
             session,
             "wheel",
             "-w", LOCATIONS["common-wheels"],
-            "-r", REQUIREMENTS["common-wheels"],
+            "--group", "test-common-wheels",
         )
         # fmt: on
     else:
@@ -115,7 +110,7 @@ def test(session: nox.Session) -> None:
     run_with_protected_pip(session, "install", generated_sdist)
 
     # Install test dependencies
-    run_with_protected_pip(session, "install", "-r", REQUIREMENTS["tests"])
+    run_with_protected_pip(session, "install", "--group", "test")
 
     # Parallelize tests as much as possible, by default.
     arguments = session.posargs or ["-n", "auto"]
@@ -134,9 +129,9 @@ def test(session: nox.Session) -> None:
 
 @nox.session
 def docs(session: nox.Session) -> None:
-    session.install("-r", REQUIREMENTS["docs"])
+    session.install("--group", "docs")
 
-    def get_sphinx_build_command(kind: str) -> List[str]:
+    def get_sphinx_build_command(kind: str) -> list[str]:
         # Having the conf.py in the docs/html is weird but needed because we
         # can not use a different configuration directory vs source directory
         # on RTD currently. So, we'll pass "-c docs/html" here.
@@ -145,6 +140,7 @@ def docs(session: nox.Session) -> None:
         return [
             "sphinx-build",
             "--keep-going",
+            "--tag", kind,
             "-W",
             "-c", "docs/html",  # see note above
             "-d", "docs/build/doctrees/" + kind,
@@ -155,13 +151,14 @@ def docs(session: nox.Session) -> None:
         ]
         # fmt: on
 
+    shutil.rmtree("docs/build", ignore_errors=True)
     session.run(*get_sphinx_build_command("html"))
     session.run(*get_sphinx_build_command("man"))
 
 
 @nox.session(name="docs-live")
 def docs_live(session: nox.Session) -> None:
-    session.install("-r", REQUIREMENTS["docs"], "sphinx-autobuild")
+    session.install("--group", "docs", "sphinx-autobuild")
 
     session.run(
         "sphinx-autobuild",
@@ -213,7 +210,7 @@ def vendoring(session: nox.Session) -> None:
         session.run("vendoring", "sync", "-v")
         return
 
-    def pinned_requirements(path: Path) -> Iterator[Tuple[str, str]]:
+    def pinned_requirements(path: Path) -> Iterator[tuple[str, str]]:
         for line in path.read_text().splitlines(keepends=False):
             one, sep, two = line.partition("==")
             if not sep:
@@ -267,7 +264,7 @@ def coverage(session: nox.Session) -> None:
     run_with_protected_pip(session, "install", ".")
 
     # Install test dependencies
-    run_with_protected_pip(session, "install", "-r", REQUIREMENTS["tests"])
+    run_with_protected_pip(session, "install", "--group", "tests")
 
     if not os.path.exists(".coverage-output"):
         os.mkdir(".coverage-output")
@@ -356,7 +353,7 @@ def build_release(session: nox.Session) -> None:
             shutil.copy(dist, final)
 
 
-def build_dists(session: nox.Session) -> List[str]:
+def build_dists(session: nox.Session) -> list[str]:
     """Return dists with valid metadata."""
     session.log(
         "# Check if there's any Git-untracked files before building the wheel",
@@ -374,7 +371,7 @@ def build_dists(session: nox.Session) -> List[str]:
         )
 
     session.log("# Build distributions")
-    session.run("python", "build-project.py", silent=True)
+    session.run("python", "build-project/build-project.py", silent=True)
     produced_dists = glob.glob("dist/*")
 
     session.log(f"# Verify distributions: {', '.join(produced_dists)}")

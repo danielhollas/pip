@@ -2,10 +2,11 @@ import logging
 import os
 import sys
 import textwrap
+from collections.abc import Iterator
 from os.path import join, normpath
 from pathlib import Path
 from tempfile import mkdtemp
-from typing import Any, Iterator
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -23,18 +24,16 @@ from tests.lib import (
 from tests.lib.local_repos import local_checkout, local_repo
 
 
-@pytest.mark.network
-def test_basic_uninstall(script: PipTestEnvironment) -> None:
+def test_basic_uninstall(script: PipTestEnvironment, data: TestData) -> None:
     """
     Test basic install and uninstall.
-
     """
-    result = script.pip("install", "INITools==0.2")
-    result.did_create(join(script.site_packages, "initools"))
+    result = script.pip_install_local("six", "-f", data.pypi_packages)
+    result.did_create(join(script.site_packages, "six.py"))
     # the import forces the generation of __pycache__ if the version of python
     # supports it
-    script.run("python", "-c", "import initools")
-    result2 = script.pip("uninstall", "INITools", "-y")
+    script.run("python", "-c", "import six")
+    result2 = script.pip("uninstall", "six", "-y")
     assert_all_changes(result, result2, [script.venv / "build", "cache"])
 
 
@@ -209,9 +208,9 @@ def test_uninstall_overlapping_package(
     parent_pkg = data.packages.joinpath("parent-0.1.tar.gz")
     child_pkg = data.packages.joinpath("child-0.1.tar.gz")
 
-    result1 = script.pip("install", parent_pkg)
+    result1 = script.pip("install", "--no-build-isolation", parent_pkg)
     result1.did_create(join(script.site_packages, "parent"))
-    result2 = script.pip("install", child_pkg)
+    result2 = script.pip("install", "--no-build-isolation", child_pkg)
     result2.did_create(join(script.site_packages, "child"))
     result2.did_create(
         normpath(join(script.site_packages, "parent/plugins/child_plugin.py"))
@@ -268,7 +267,7 @@ def test_uninstall_entry_point_colon_in_name(
     script_name = script.bin_path.joinpath(console_scripts.split("=")[0].strip())
     if sys.platform == "win32":
         script_name = script_name.with_suffix(".exe")
-    script.pip("install", pkg_path)
+    script.pip("install", "--no-build-isolation", pkg_path)
     assert script_name.exists()
     script.assert_installed(ep_install="0.1")
 
@@ -295,7 +294,7 @@ def test_uninstall_gui_scripts(script: PipTestEnvironment) -> None:
     script_name = script.bin_path.joinpath("test_")
     if sys.platform == "win32":
         script_name = script_name.with_suffix(".exe")
-    script.pip("install", pkg_path)
+    script.pip("install", "--no-build-isolation", pkg_path)
     assert script_name.exists()
     script.pip("uninstall", pkg_name, "-y")
     assert not script_name.exists()
@@ -312,7 +311,7 @@ def test_uninstall_console_scripts(script: PipTestEnvironment) -> None:
         version="0.1",
         entry_points={"console_scripts": ["discover = discover:main"]},
     )
-    result = script.pip("install", pkg_path)
+    result = script.pip("install", "--no-build-isolation", pkg_path)
     result.did_create(script.bin / f"discover{script.exe}")
     result2 = script.pip("uninstall", "discover", "-y")
     assert_all_changes(
@@ -343,7 +342,7 @@ def test_uninstall_console_scripts_uppercase_name(script: PipTestEnvironment) ->
     )
     script_name = script.bin_path.joinpath("Test" + script.exe)
 
-    script.pip("install", pkg_path)
+    script.pip("install", "--no-build-isolation", pkg_path)
     assert script_name.exists()
 
     script.pip("uninstall", "ep_install", "-y")
@@ -436,7 +435,7 @@ def _test_uninstall_editable_with_source_outside_venv(
         temp_pkg_dir,
         expect_stderr=True,
     )
-    result2 = script.pip("install", "-e", temp_pkg_dir)
+    result2 = script.run("python", "setup.py", "develop", cwd=temp_pkg_dir)
     result2.did_create(join(script.site_packages, "pip-test-package.egg-link"))
     result3 = script.pip("uninstall", "-y", "pip-test-package")
     assert_all_changes(
@@ -638,11 +637,19 @@ def test_uninstall_setuptools_develop_install(
     script.assert_installed(FSPkg="0.1.dev0")
     # Uninstall both develop and install
     uninstall = script.pip("uninstall", "FSPkg", "-y")
-    assert any(p.suffix == ".egg" for p in uninstall.files_deleted), str(uninstall)
     uninstall2 = script.pip("uninstall", "FSPkg", "-y")
-    assert (
+    # Depending on the metadata backend, the egg-link will be uninstalled first
+    # or second, so we use xor in the assertions below.
+    assert (join(script.site_packages, "FSPkg.egg-link") in uninstall.files_deleted) ^ (
         join(script.site_packages, "FSPkg.egg-link") in uninstall2.files_deleted
-    ), str(uninstall2)
+    )
+    assert any(
+        p.name.startswith("FSPkg") and p.suffix == ".egg"
+        for p in uninstall.files_deleted
+    ) ^ any(
+        p.name.startswith("FSPkg") and p.suffix == ".egg"
+        for p in uninstall2.files_deleted
+    )
     script.assert_not_installed("FSPkg")
 
 
@@ -656,9 +663,16 @@ def test_uninstall_editable_and_pip_install(
     script.environ["SETUPTOOLS_SYS_PATH_TECHNIQUE"] = "raw"
 
     pkg_path = data.packages.joinpath("FSPkg")
-    script.pip("install", "-e", ".", expect_stderr=True, cwd=pkg_path)
+    script.run("python", "setup.py", "develop", expect_stderr=True, cwd=pkg_path)
     # ensure both are installed with --ignore-installed:
-    script.pip("install", "--ignore-installed", ".", expect_stderr=True, cwd=pkg_path)
+    script.pip(
+        "install",
+        "--no-build-isolation",
+        "--ignore-installed",
+        ".",
+        expect_stderr=True,
+        cwd=pkg_path,
+    )
     script.assert_installed(FSPkg="0.1.dev0")
     # Uninstall both develop and install
     uninstall = script.pip("uninstall", "FSPkg", "-y")
@@ -693,7 +707,7 @@ def test_uninstall_editable_and_pip_install_easy_install_remove(
 
     # Install FSPkg
     pkg_path = data.packages.joinpath("FSPkg")
-    script.pip("install", "-e", ".", expect_stderr=True, cwd=pkg_path)
+    script.run("python", "setup.py", "develop", expect_stderr=True, cwd=pkg_path)
 
     # Rename easy-install.pth to pip-test-fspkg.pth
     easy_install_pth = join(script.site_packages_path, "easy-install.pth")
