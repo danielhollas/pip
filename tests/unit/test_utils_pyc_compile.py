@@ -1,7 +1,9 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import partial
 from pathlib import Path
-from typing import Iterator, Optional, Type
 from unittest.mock import Mock, patch
 
 import pytest
@@ -30,7 +32,7 @@ needs_parallel_compiler = pytest.mark.skipif(
 
 
 @contextmanager
-def patch_cpu_count(n: Optional[int]) -> Iterator[None]:
+def patch_cpu_count(n: int | None) -> Iterator[None]:
     with patch("os.process_cpu_count", new=lambda: n, create=True):
         yield
 
@@ -133,7 +135,7 @@ class TestCompilerSelection:
         [(None, SerialCompiler), (1, SerialCompiler), (2, ParallelCompiler)],
     )
     def test_cpu_count(
-        self, cpus: Optional[int], expected_type: Type[BytecodeCompiler]
+        self, cpus: int | None, expected_type: type[BytecodeCompiler]
     ) -> None:
         with patch_cpu_count(cpus):
             compiler = create_bytecode_compiler()
