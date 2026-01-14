@@ -398,6 +398,7 @@ class InprocessBuildEnvironmentInstaller:
             # pre-compile everything since not all modules will be used.
             pycompile=False,
             progress_bar="off",
+            workers=None,
         )
 
         env = get_environment(list(prefix.lib_dirs))

@@ -68,13 +68,16 @@ class ParallelCompiler(BytecodeCompiler):
     """Compile a set of Python modules using a pool of workers."""
 
     def __init__(self, workers: int) -> None:
-        from concurrent import futures
-
+        # Lazy imports to be able to monkeypatch the module in tests
         if sys.version_info >= (3, 14):
-            # Sub-interpreters have less overhead than OS processes.
+            # Sub-interpreters use threads which have less overhead than OS processes.
+            from concurrent import futures
+
             self.pool = futures.InterpreterPoolExecutor(workers)
         else:
-            self.pool = futures.ProcessPoolExecutor(workers)
+            import multiprocessing
+
+            self.pool = multiprocessing.Pool(workers)
         self.workers = workers
 
     def __call__(self, paths: Iterable[str | Path]) -> Iterable[CompileResult]:
@@ -82,7 +85,11 @@ class ParallelCompiler(BytecodeCompiler):
 
     def __exit__(self, *args: object) -> None:
         # It's pointless to block on pool finalization, let it occur in background.
-        self.pool.shutdown(wait=False)
+        if hasattr(self.pool, "shutdown"):
+            self.pool.shutdown(wait=False)
+        else:
+            # TODO: Should we run pool.terminate() here?
+            self.pool.close()
 
 
 def create_bytecode_compiler(

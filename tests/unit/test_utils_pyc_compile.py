@@ -150,11 +150,12 @@ class TestCompilerSelection:
         assert compiler.workers == 8
 
     def test_broken_multiprocessing(self) -> None:
-        fake_module = Mock()
-        fake_module.ProcessPoolExecutor = Mock(side_effect=NotImplementedError)
-        fake_module.InterpreterPoolExecutor = Mock(side_effect=NotImplementedError)
+        fake_futures = Mock()
+        fake_futures.InterpreterPoolExecutor = Mock(side_effect=NotImplementedError)
+        fake_mp = Mock(side_effect=NotImplementedError)
         with (
-            patch("concurrent.futures", fake_module),
+            patch("concurrent.futures", fake_futures),
+            patch("multiprocessing.Pool", fake_mp),
             patch.object(
                 pyc_compile, "ParallelCompiler", wraps=ParallelCompiler
             ) as parallel_mock,

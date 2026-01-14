@@ -6,6 +6,7 @@ from collections.abc import Generator, Iterable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
+from typing import Literal, overload
 from zipfile import ZipFile
 
 from pip._internal.cli.progress_bars import BarType, get_install_progress_renderer
@@ -61,6 +62,34 @@ def _does_python_size_surpass_threshold(
     return False
 
 
+@overload
+def install_given_reqs(
+    requirements: list[InstallRequirement],
+    root: str | None,
+    home: str | None,
+    prefix: str | None,
+    warn_script_location: bool,
+    use_user_site: bool,
+    pycompile: Literal[True],
+    progress_bar: BarType,
+    workers: WorkerSetting,
+) -> list[InstallationResult]: ...
+
+
+@overload
+def install_given_reqs(
+    requirements: list[InstallRequirement],
+    root: str | None,
+    home: str | None,
+    prefix: str | None,
+    warn_script_location: bool,
+    use_user_site: bool,
+    pycompile: Literal[False],
+    progress_bar: BarType,
+    workers: None,
+) -> list[InstallationResult]: ...
+
+
 def install_given_reqs(
     requirements: list[InstallRequirement],
     root: str | None,
@@ -70,7 +99,7 @@ def install_given_reqs(
     use_user_site: bool,
     pycompile: bool,
     progress_bar: BarType,
-    workers: WorkerSetting,
+    workers: WorkerSetting | None,
 ) -> list[InstallationResult]:
     """
     Install everything in the given list.
@@ -100,6 +129,7 @@ def install_given_reqs(
         code_size_check = partial(
             _does_python_size_surpass_threshold, to_install.values()
         )
+        assert workers
         pycompiler = create_bytecode_compiler(workers, code_size_check)
     else:
         pycompiler = None
