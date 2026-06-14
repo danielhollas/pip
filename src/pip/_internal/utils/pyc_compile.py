@@ -114,16 +114,8 @@ def create_bytecode_compiler(
 
         return SerialCompiler()
 
-    try:
-        # New in Python 3.13.
-        cpus: int | None = os.process_cpu_count()  # type: ignore
-    except AttributeError:
-        # Poor man's fallback. We won't respect PYTHON_CPU_COUNT, but the envvar
-        # was only added in Python 3.13 anyway.
-        try:
-            cpus = len(os.sched_getaffinity(0))  # exists on unix (usually)
-        except AttributeError:
-            cpus = os.cpu_count()
+    # New in Python 3.13, but we return early anyway for older pythons
+    cpus: int | None = os.process_cpu_count()  # type: ignore
 
     logger.debug("Detected CPU count: %s", cpus)
     logger.debug("Configured worker count: %s", max_workers)
@@ -149,6 +141,6 @@ def create_bytecode_compiler(
         logger.info("Bytecode will be compiled using at most %s workers", workers)
         return compiler
     except (ImportError, NotImplementedError, OSError) as e:
-        # Case 4: multiprocessing is broken, fall back to serial compilation.
+        # Case 4: InterpreterPool is unavailable
         logger.info("Err! Falling back to serial bytecode compilation", exc_info=e)
         return SerialCompiler()
