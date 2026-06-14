@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from functools import partial
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -19,9 +18,10 @@ from pip._internal.utils.pyc_compile import (
 )
 
 try:
-    import concurrent.futures
-    import multiprocessing
-except (OSError, NotImplementedError, ImportError):
+    from concurrent.futures import (  # type: ignore[attr-defined]
+        InterpreterPoolExecutor,  # noqa: F401
+    )
+except ImportError:
     parallel_supported = False
 else:
     parallel_supported = True
@@ -35,16 +35,6 @@ needs_parallel_compiler = pytest.mark.skipif(
 def patch_cpu_count(n: int | None) -> Iterator[None]:
     with patch("os.process_cpu_count", new=lambda: n, create=True):
         yield
-
-
-@pytest.fixture(autouse=True)
-def force_spawn_method() -> Iterator[None]:
-    """Force the use of the spawn method to suppress thread-safety warnings."""
-    if parallel_supported:
-        ctx = multiprocessing.get_context("spawn")
-        wrapped = partial(concurrent.futures.ProcessPoolExecutor, mp_context=ctx)
-        with patch.object(concurrent.futures, "ProcessPoolExecutor", wrapped):
-            yield
 
 
 class TestCompileSingle:
