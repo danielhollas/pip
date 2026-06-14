@@ -354,6 +354,8 @@ class InstallCommand(RequirementCommand):
             ),
         )
 
+        self.cmd_opts.add_option(cmdoptions.install_jobs())
+
     @contextlib.contextmanager
     def pip_version_check(self, options: Values, args: list[str]) -> Iterator[None]:
         # Skip the self-version check when pip itself is a requirement. The
@@ -516,6 +518,10 @@ class InstallCommand(RequirementCommand):
                 # we're not modifying it.
                 modifying_pip = pip_req.satisfied_by is None
             protect_pip_from_modification_on_windows(modifying_pip=modifying_pip)
+            if modifying_pip:
+                # Parallelization will re-import pip when starting new workers
+                # during installation which is unsafe if pip is being modified.
+                options.install_jobs = 1
 
             reqs_to_build = [
                 r for r in requirement_set.requirements_to_install if not r.is_wheel
@@ -562,6 +568,7 @@ class InstallCommand(RequirementCommand):
                 use_user_site=options.use_user_site,
                 pycompile=options.compile,
                 progress_bar=options.progress_bar,
+                workers=options.install_jobs,
             )
 
             lib_locations = get_lib_location_guesses(

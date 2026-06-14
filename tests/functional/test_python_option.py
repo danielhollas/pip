@@ -29,6 +29,8 @@ def test_python_interpreter(
         "-f",
         shared_data.find_links,
         "--no-index",
+        "--install-jobs",
+        "1",
         "simplewheel==1.0",
     )
 

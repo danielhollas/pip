@@ -3,10 +3,13 @@ from __future__ import annotations
 import collections
 import logging
 from collections.abc import Generator
+from contextlib import nullcontext
 from dataclasses import dataclass
+from typing import Literal, overload
 
 from pip._internal.cli.progress_bars import BarType, get_install_progress_renderer
 from pip._internal.utils.logging import indent_log
+from pip._internal.utils.pyc_compile import WorkerSetting, create_bytecode_compiler
 
 from .req_file import parse_requirements
 from .req_install import InstallRequirement
@@ -35,6 +38,34 @@ def _validate_requirements(
         yield req.name, req
 
 
+@overload
+def install_given_reqs(
+    requirements: list[InstallRequirement],
+    root: str | None,
+    home: str | None,
+    prefix: str | None,
+    warn_script_location: bool,
+    use_user_site: bool,
+    pycompile: Literal[True],
+    progress_bar: BarType,
+    workers: WorkerSetting,
+) -> list[InstallationResult]: ...
+
+
+@overload
+def install_given_reqs(
+    requirements: list[InstallRequirement],
+    root: str | None,
+    home: str | None,
+    prefix: str | None,
+    warn_script_location: bool,
+    use_user_site: bool,
+    pycompile: Literal[False],
+    progress_bar: BarType,
+    workers: None,
+) -> list[InstallationResult]: ...
+
+
 def install_given_reqs(
     requirements: list[InstallRequirement],
     root: str | None,
@@ -44,6 +75,7 @@ def install_given_reqs(
     use_user_site: bool,
     pycompile: bool,
     progress_bar: BarType,
+    workers: WorkerSetting | None,
 ) -> list[InstallationResult]:
     """
     Install everything in the given list.
@@ -69,7 +101,13 @@ def install_given_reqs(
         )
         items = renderer(items)
 
-    with indent_log():
+    if pycompile:
+        assert workers
+        pycompiler = create_bytecode_compiler(workers)
+    else:
+        pycompiler = None
+
+    with indent_log(), pycompiler or nullcontext():
         for requirement in items:
             req_name = requirement.name
             assert req_name is not None
@@ -87,7 +125,7 @@ def install_given_reqs(
                     prefix=prefix,
                     warn_script_location=warn_script_location,
                     use_user_site=use_user_site,
-                    pycompile=pycompile,
+                    pycompiler=pycompiler,
                 )
             except Exception:
                 # if install did not succeed, rollback previous uninstall
