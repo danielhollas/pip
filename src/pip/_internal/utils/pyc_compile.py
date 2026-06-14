@@ -14,12 +14,12 @@ from collections.abc import Callable, Iterable
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NamedTuple, Protocol, Union
+from typing import TYPE_CHECKING, Literal, NamedTuple, Protocol, TypeAlias
 
 if TYPE_CHECKING:
     from pip._vendor.typing_extensions import Self
 
-WorkerSetting = Union[int, Literal["auto"]]
+WorkerSetting: TypeAlias = int | Literal["auto"]
 
 CODE_SIZE_THRESHOLD = 1000 * 1000  # 1 MB of .py code
 WORKER_LIMIT = 8
@@ -68,28 +68,19 @@ class ParallelCompiler(BytecodeCompiler):
     """Compile a set of Python modules using a pool of workers."""
 
     def __init__(self, workers: int) -> None:
+        assert sys.version_info >= (3, 14)
         # Lazy imports to be able to monkeypatch the module in tests
-        if sys.version_info >= (3, 14):
-            # Sub-interpreters use threads which have less overhead than OS processes.
-            from concurrent import futures
+        # Sub-interpreters use threads which have less overhead than OS processes.
+        from concurrent import futures
 
-            self.pool = futures.InterpreterPoolExecutor(workers)
-        else:
-            import multiprocessing
-
-            self.pool = multiprocessing.Pool(workers)
+        self.pool = futures.InterpreterPoolExecutor(workers)  # type: ignore[attr-defined]
         self.workers = workers
 
     def __call__(self, paths: Iterable[str | Path]) -> Iterable[CompileResult]:
         yield from self.pool.map(_compile_single, paths)
 
     def __exit__(self, *args: object) -> None:
-        # It's pointless to block on pool finalization, let it occur in background.
-        if hasattr(self.pool, "shutdown"):
-            self.pool.shutdown(wait=False)
-        else:
-            # TODO: Should we run pool.terminate() here?
-            self.pool.close()
+        self.pool.shutdown(wait=False)
 
 
 def create_bytecode_compiler(
@@ -112,6 +103,17 @@ def create_bytecode_compiler(
     """
     import logging
 
+    logger = logging.getLogger(__name__)
+
+    if sys.version_info < (3, 14):
+        logger.info("Bytecode will be compiled serially")
+        if max_workers != "auto" and max_workers != 1:
+            logger.warning(
+                "Parallel bytecode compilation is only available on Python>=3.14"
+            )
+
+        return SerialCompiler()
+
     try:
         # New in Python 3.13.
         cpus: int | None = os.process_cpu_count()  # type: ignore
@@ -123,7 +125,6 @@ def create_bytecode_compiler(
         except AttributeError:
             cpus = os.cpu_count()
 
-    logger = logging.getLogger(__name__)
     logger.debug("Detected CPU count: %s", cpus)
     logger.debug("Configured worker count: %s", max_workers)
 
