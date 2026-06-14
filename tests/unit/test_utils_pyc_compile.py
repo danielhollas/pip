@@ -158,8 +158,3 @@ class TestCompilerSelection:
         with patch_cpu_count(2):
             compiler = create_bytecode_compiler(max_workers=1)
         assert isinstance(compiler, SerialCompiler)
-
-    def test_not_enough_code(self) -> None:
-        with patch_cpu_count(2):
-            compiler = create_bytecode_compiler(code_size_check=lambda threshold: False)
-        assert isinstance(compiler, SerialCompiler)

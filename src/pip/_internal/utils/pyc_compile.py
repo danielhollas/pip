@@ -10,7 +10,7 @@ import importlib.util
 import os
 import sys
 import warnings
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 
 WorkerSetting: TypeAlias = int | Literal["auto"]
 
-CODE_SIZE_THRESHOLD = 1000 * 1000  # 1 MB of .py code
 WORKER_LIMIT = 8
 
 
@@ -85,21 +84,15 @@ class ParallelCompiler(BytecodeCompiler):
 
 def create_bytecode_compiler(
     max_workers: WorkerSetting = "auto",
-    code_size_check: Callable[[int], bool] | None = None,
 ) -> BytecodeCompiler:
     """Return a bytecode compiler appropriate for the workload and platform.
 
     Parallelization will only be used if:
       - There are 2 or more CPUs available
       - The maximum # of workers permitted is at least 2
-      - There is "enough" code to be compiled to offset the worker startup overhead
-          (if it can be determined in advance via code_size_check)
 
     A maximum worker count of "auto" will use the number of CPUs available to the
     process or system, up to a hard-coded limit (to avoid resource exhaustion).
-
-    code_size_check is a callable that receives the code size threshold (in # of
-    bytes) for parallelization and returns whether it will be surpassed or not.
     """
     import logging
 
@@ -109,7 +102,7 @@ def create_bytecode_compiler(
         logger.info("Bytecode will be compiled serially")
         if max_workers != "auto" and max_workers != 1:
             logger.warning(
-                "Parallel bytecode compilation is only available on Python>=3.14"
+                "Parallel bytecode compilation is only available on Python >=3.14"
             )
 
         return SerialCompiler()
@@ -123,11 +116,6 @@ def create_bytecode_compiler(
     # Case 1: Parallelization is disabled or pointless (there's only one CPU).
     if max_workers == 1 or cpus == 1 or cpus is None:
         logger.info("Bytecode will be compiled serially")
-        return SerialCompiler()
-
-    # Case 2: There isn't enough code for parallelization to be worth it.
-    if code_size_check is not None and not code_size_check(CODE_SIZE_THRESHOLD):
-        logger.info("Bytecode will be compiled serially (not enough .py code)")
         return SerialCompiler()
 
     # Case 3: Attempt to initialize a parallelized compiler.

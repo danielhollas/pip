@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import collections
 import logging
-from collections.abc import Generator, Iterable
+from collections.abc import Generator
 from contextlib import nullcontext
 from dataclasses import dataclass
-from functools import partial
 from typing import Literal, overload
-from zipfile import ZipFile
 
 from pip._internal.cli.progress_bars import BarType, get_install_progress_renderer
 from pip._internal.utils.logging import indent_log
@@ -38,28 +36,6 @@ def _validate_requirements(
     for req in requirements:
         assert req.name, f"invalid to-be-installed requirement: {req}"
         yield req.name, req
-
-
-def _does_python_size_surpass_threshold(
-    requirements: Iterable[InstallRequirement], threshold: int
-) -> bool:
-    """Inspect wheels to check whether there is enough .py code to
-    enable bytecode parallelization.
-    """
-    py_size = 0
-    for req in requirements:
-        if not req.local_file_path or not req.is_wheel:
-            # No wheel to inspect as this is a legacy editable.
-            continue
-
-        with ZipFile(req.local_file_path, allowZip64=True) as wheel_file:
-            for entry in wheel_file.infolist():
-                if entry.filename.endswith(".py"):
-                    py_size += entry.file_size
-                    if py_size > threshold:
-                        return True
-
-    return False
 
 
 @overload
@@ -126,11 +102,8 @@ def install_given_reqs(
         items = renderer(items)
 
     if pycompile:
-        code_size_check = partial(
-            _does_python_size_surpass_threshold, to_install.values()
-        )
         assert workers
-        pycompiler = create_bytecode_compiler(workers, code_size_check)
+        pycompiler = create_bytecode_compiler(workers)
     else:
         pycompiler = None
 
