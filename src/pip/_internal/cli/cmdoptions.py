@@ -1261,7 +1261,7 @@ install_jobs: Callable[..., Option] = partial(
     Option,
     "--install-jobs",
     dest="install_jobs",
-    default="1",
+    default="auto",
     type=str,
     action="callback",
     callback=_handle_jobs,
